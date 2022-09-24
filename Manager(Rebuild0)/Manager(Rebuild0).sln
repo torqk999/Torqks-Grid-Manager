@@ -1,0 +1,26 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.32510.428
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Manager(Rebuild0)", "Manager(Rebuild0)\Manager(Rebuild0).csproj", "{A6A7D8BE-C5F6-48B0-A009-F9D7C57D3334}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PistonAdjuster", "PistonAdjuster\PistonAdjuster.csproj", "{02F7ED6C-8E0A-4B63-8F66-D5CB27537974}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A6A7D8BE-C5F6-48B0-A009-F9D7C57D3334}.Debug|x64.ActiveCfg = Debug|x64
+		{A6A7D8BE-C5F6-48B0-A009-F9D7C57D3334}.Debug|x64.Build.0 = Debug|x64
+		{02F7ED6C-8E0A-4B63-8F66-D5CB27537974}.Debug|x64.ActiveCfg = Debug|x64
+		{02F7ED6C-8E0A-4B63-8F66-D5CB27537974}.Debug|x64.Build.0 = Debug|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {6EB29B32-80CB-40CC-9F40-132F86395A2B}
+	EndGlobalSection
+EndGlobal
