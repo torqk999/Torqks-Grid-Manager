@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PistonAdjuster", "PistonAdj
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Manager(NEW)", "Manager(NEW)\Manager(NEW).csproj", "{C33743F4-785F-46B7-B06C-D1D75A4A430F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Shortcut", "Shortcut\Shortcut.csproj", "{1E64229B-E75F-47EE-AEE5-5B6E67480341}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -20,6 +22,8 @@ Global
 		{02F7ED6C-8E0A-4B63-8F66-D5CB27537974}.Debug|x64.Build.0 = Debug|x64
 		{C33743F4-785F-46B7-B06C-D1D75A4A430F}.Debug|x64.ActiveCfg = Debug|x64
 		{C33743F4-785F-46B7-B06C-D1D75A4A430F}.Debug|x64.Build.0 = Debug|x64
+		{1E64229B-E75F-47EE-AEE5-5B6E67480341}.Debug|x64.ActiveCfg = Debug|x64
+		{1E64229B-E75F-47EE-AEE5-5B6E67480341}.Debug|x64.Build.0 = Debug|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
