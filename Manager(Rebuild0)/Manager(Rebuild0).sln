@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Manager(NEW)", "Manager(NEW
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Shortcut", "Shortcut\Shortcut.csproj", "{1E64229B-E75F-47EE-AEE5-5B6E67480341}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GOOD", "GOOD\GOOD.csproj", "{8016F9EF-ACBC-49B5-83F5-92B4E25BB2EB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -24,6 +26,8 @@ Global
 		{C33743F4-785F-46B7-B06C-D1D75A4A430F}.Debug|x64.Build.0 = Debug|x64
 		{1E64229B-E75F-47EE-AEE5-5B6E67480341}.Debug|x64.ActiveCfg = Debug|x64
 		{1E64229B-E75F-47EE-AEE5-5B6E67480341}.Debug|x64.Build.0 = Debug|x64
+		{8016F9EF-ACBC-49B5-83F5-92B4E25BB2EB}.Debug|x64.ActiveCfg = Debug|x64
+		{8016F9EF-ACBC-49B5-83F5-92B4E25BB2EB}.Debug|x64.Build.0 = Debug|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -339,14 +339,14 @@ namespace IngameScript
 
         class Get
         {
-            public virtual void GetBlock(Program prog, List<IMyTerminalBlock> buffer)
+            public virtual void GetBlocks<T>(Program prog, List<T> buffer) where T : class
             {
-
+                prog.GridTerminalSystem.GetBlocksOfType<T>(buffer);
             }
         }
         class TG<T> : Get where T : class
         {
-            public override void GetBlock(Program prog, List<IMyTerminalBlock> buffer)
+            public override void GetBlocks(Program prog, List<IMyTerminalBlock> buffer)
             {
                 prog.GridTerminalSystem.GetBlocksOfType<T>(buffer);
             }
@@ -434,7 +434,7 @@ namespace IngameScript
             {
                 try
                 {
-                    Getters[op.REG[op.INDEX].QUERY].GetBlock(op.DATA.ROOT.Program, op.DATA.TermBlocks);
+                    Getters[op.REG[op.INDEX].QUERY].GetBlocks(op.DATA.ROOT.Program, op.DATA.TermBlocks);
                     op.REG[op.INDEX].QUERY++;
                     if (op.REG[op.INDEX].QUERY == Getters.Length)
                     {
