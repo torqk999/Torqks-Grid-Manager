@@ -365,8 +365,6 @@ namespace IngameScript
         public class Filter
         {
             public string[] ItemID = new string[2];
-            //public string ItemType;
-            //public string ItemSubType;
             public FilterMeta Meta;
 
             
