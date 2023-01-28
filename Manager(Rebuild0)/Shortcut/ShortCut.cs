@@ -22,26 +22,50 @@ namespace IngameScript
 {
     partial class Program : MyGridProgram
     {
-        // This file contains your actual script.
-        //
-        // You can either keep all your code here, or you can create separate
-        // code files to make your program easier to navigate while coding.
-        //
-        // In order to add a new utility class, right-click on your project, 
-        // select 'New' then 'Add Item...'. Now find the 'Space Engineers'
-        // category under 'Visual C# Items' on the left hand side, and select
-        // 'Utility Class' in the main area. Name it in the box below, and
-        // press OK. This utility class will be merged in with your code when
-        // deploying your final script.
-        //
-        // You can also simply create a new utility class manually, you don't
-        // have to use the template if you don't want to. Just do so the first
-        // time to see what a utility class looks like.
-        // 
-        // Go to:
-        // https://github.com/malware-dev/MDK-SE/wiki/Quick-Introduction-to-Space-Engineers-Ingame-Scripts
-        //
-        // to learn more about ingame scripts.
+
+        #region MOTH-BALLED
+        public enum BlockType
+        {
+            DISPLAY,
+            CARGO,
+            PRODUCER,
+            REFINERY,
+            POW_CON,
+            RESOURCE
+        }
+        static void BuildBlock<T>(T termBlock) where T : class
+        {
+            if (typeof(T) == typeof(IMyRefinery))
+            {
+
+            }
+
+            if (typeof(T) == typeof(IMyAssembler))
+            {
+
+            }
+
+            if (typeof(T) == typeof(IMyCargoContainer))
+            {
+
+            }
+
+            /*if (typeof(T) == typeof(IMyInventoryOwner))
+            {
+
+            }*/
+
+            if (typeof(T) == typeof(IMyTextPanel))
+            {
+
+            }
+
+            if (typeof(T) == typeof(IMyTerminalBlock))
+            {
+
+            }
+        }
+        #endregion
 
         #region MAIN REGION
 
@@ -49,13 +73,14 @@ namespace IngameScript
         const string Signature = "[TGM]";
         const string CustomSig = "[CPY]";
 
-        const float DefFontSize = .5f;
+        const float DefFontSize = .3f;
         const int DefSigCount = 2;
         static readonly int[] DefScreenRatio = { 25, 17 };
-        const int InvSearchCap = 10;
+        const float CriticalItemThreshold = 0.98f;
+        const int InvSearchCap = 23;
         const int ItemSearchCap = 10;
         const int ProdSearchCap = 10;
-        const int ItemMoveCap = 3;
+        const int ItemMoveCap = 10;
         const int SetupCap = 20;
         const float CleanPercent = .8f;
         const float PowerThreshold = .2f;
@@ -66,6 +91,8 @@ namespace IngameScript
 
         RootMeta ROOT;
         int ROOT_INDEX = 0;
+        int TallyLoopTotal = 0;
+        int TallyLoopCount = 0;
         IMyTextSurface mySurface;
 
         public readonly char[] EchoLoop = new char[]
@@ -75,6 +102,7 @@ namespace IngameScript
             '#',
             '&'
 };
+        string[] InputBuffer = new string[2];
         const char Split = '^';
         const string Seperator = "^";
         const int EchoMax = 4;
@@ -83,6 +111,7 @@ namespace IngameScript
         SearchCounter Counter = new SearchCounter(new int[] { ItemMoveCap, ItemSearchCap });
         StringBuilder Debug = new StringBuilder();
         bool FAIL = false;
+        bool LIT_DEFS = false;
 
         int SetupQueIndex = 0;
         int DisplayQueIndex = 0;
@@ -138,12 +167,10 @@ namespace IngameScript
         List<Production> Productions = new List<Production>();
         List<block> PowerConsumers = new List<block>();
         Resource PowerMonitor;
-
-        
         public enum Count
         {
             MOVED,
-            ITEMS
+            SEARCHED
         }
         public enum _Target
         {
@@ -181,53 +208,6 @@ namespace IngameScript
             PERCENT
         }
 
-        public class SearchCounter
-        {
-            public int[] Max;
-            public int[] Index;
-
-            public SearchCounter(int[] init)
-            {
-                Max = init;
-                Index = new int[Max.Length];
-            }
-            public bool Increment(Count count)
-            {
-                return Increment((int)count);
-            }
-            public bool Increment(int dim)
-            {
-                Index[dim]++;
-                return Check(dim);
-            }
-
-            public bool Check(Count count)
-            {
-                return Check((int)count);
-            }
-            public bool Check(int dim)
-            {
-                if (Index[dim] >= Max[dim])
-                    return true;
-                return false;
-            }
-
-            public void Reset()
-            {
-                for (int i = 0; i < Index.Length; i++)
-                    Index[i] = 0;
-            }
-
-            public void Reset(int i)
-            {
-                Index[i] = 0;
-            }
-            public void Reset(Count count)
-            {
-                Reset((int)count);
-            }
-        }
-
         public struct RootMeta
         {
             public string Signature;
@@ -256,56 +236,17 @@ namespace IngameScript
                 Block = block;
             }
         }
-        public struct FilterMeta
-        {
-            public bool IN_BOUND;
-            public bool OUT_BOUND;
-            public MyFixedPoint Target;
-            public RootMeta Root;
-            public string[] ItemID;
-
-            public FilterMeta(
-                RootMeta meta,
-                bool In, bool Out,
-                string[] id,
-                MyFixedPoint target)
-            {
-                Root = meta;
-                IN_BOUND = In;
-                OUT_BOUND = Out;
-                Target = target;
-                ItemID = id;
-            }
-
-            public FilterMeta(
-                RootMeta meta,
-                bool In, bool Out,
-                string id,
-                MyFixedPoint target)
-            {
-                Root = meta;
-                IN_BOUND = In;
-                OUT_BOUND = Out;
-                Target = target;
-                ItemID = null;
-                GenerateFilters(id, ref ItemID);
-            }
-        }
         public struct ProdMeta
         {
             public MyDefinitionId Def;
             public string ProducerType;
-            public int Target;
-            public FilterMeta Filter;
+            public Filter Filter;
 
             public ProdMeta(RootMeta root, MyDefinitionId def, string prodIdString, int target = 0)
             {
                 Def = def;
                 ProducerType = prodIdString;
-                Target = target;
-                string[] id = new string[2];
-                GenerateFilters(def, ref id);
-                Filter = new FilterMeta(root, true, true, id, target);
+                Filter = new Filter(def, root, target);
             }
         }
         public struct DisplayMeta
@@ -317,7 +258,6 @@ namespace IngameScript
             public _Notation Notation;
             public _Target TargetType;
 
-            //public Profile FilterProfile;
             public block TargetBlock;
             public IMyCubeGrid TargetGrid;
             public IMyBlockGroup TargetGroup;
@@ -331,13 +271,54 @@ namespace IngameScript
                 Notation = _Notation.DEFAULT;
                 TargetType = _Target.DEFAULT;
 
-                //FilterProfile = new Profile(false, false);
                 TargetBlock = null;
                 TargetGrid = null;
                 TargetGroup = null;
             }
         }
 
+        public class SearchCounter
+        {
+            public int[] Max;
+            public int[] Total;
+            public int[] Count;
+
+            public SearchCounter(int[] init)
+            {
+                Max = init;
+                Total = new int[Max.Length];
+                Count = new int[Max.Length];
+            }
+            public bool Increment(Count count)
+            {
+                Count[(int)count]++;
+                Total[(int)count]++;
+                return Check(count);
+            }
+            public bool Check(Count count)
+            {
+                if (Count[(int)count] >= Max[(int)count])
+                    return true;
+                return false;
+            }
+            public void HardReset()
+            {
+                for (int i = 0; i < Max.Length; i++)
+                {
+                    Count[i] = 0;
+                    Total[i] = 0;
+                }
+            }
+            public void Reset()
+            {
+                for (int i = 0; i < Count.Length; i++)
+                    Count[i] = 0;
+            }
+            public void Reset(Count count)
+            {
+                Count[(int)count] = 0;
+            }
+        }
         public class Root
         {
             public RootMeta rMeta;
@@ -365,81 +346,28 @@ namespace IngameScript
         public class Filter
         {
             public string[] ItemID = new string[2];
-            public FilterMeta Meta;
+            public bool IN_BOUND;
+            public bool OUT_BOUND;
+            public MyFixedPoint Target;
+            public RootMeta Root;
 
-            
-            void FilterSetup(string dataString)
+            Filter(RootMeta root, MyFixedPoint target, bool IN, bool OUT)
             {
-                /// FILTER CHANGE ///
-
-                string[] lineblocks = dataString.Split(' ');  // Break each line into blocks
-
-                if (lineblocks.Length < 2)  // There must be more than one block to have filter candidate and desired update
-                    return;
-
-                string itemID = "null"; // Default target, don't update any filters
-                bool bDefault = false;
-                bool bIn = true;
-                bool bOut = true;
-                MyFixedPoint target = 0;
-
-                if (lineblocks[0].Contains(":")) // Filter insignia
-                {
-                    itemID = lineblocks[0];
-                }
-
-                if (lineblocks[0].Contains("!")) // Default insignia
-                {
-                    bDefault = true;
-                }
-
-                for (int i = 1; i < lineblocks.Length; i++) // iterate through the remaining blocks
-                {
-                    switch (lineblocks[i][0])
-                    {
-                        case '#':   // set a new target value
-                            target = (MyFixedPoint)float.Parse(lineblocks[i].Remove(0, 1));
-                            break;
-
-                        case '+':
-                            bIn = (Contains(lineblocks[i], "in")) ? true : bIn;
-                            bOut = (Contains(lineblocks[i], "out")) ? true : bOut;
-                            break;
-
-                        case '-':
-                            bIn = (Contains(lineblocks[i], "in")) ? false : bIn;
-                            bOut = (Contains(lineblocks[i], "out")) ? false : bOut;
-                            break;
-                    }
-                }
-
-                if (bDefault)
-                {
-                    Meta.IN_BOUND = bIn;
-                    Meta.OUT_BOUND = bOut;
-                }
-
-                if (itemID != "null")
-                {
-                    GenerateFilters(itemID, ref ItemID);
-                    //FilterMeta meta = new FilterMeta(Meta.Parent, Meta.Root, bIn, bOut,  target);
-                    //profile.Filters.Add(new Filter(meta, itemID));
-                }
+                Root = root;
+                Target = target;
+                IN_BOUND = IN;
+                OUT_BOUND = OUT;
             }
-
-            public Filter(FilterMeta meta, string combo)
+            public Filter(string combo, RootMeta root, MyFixedPoint target, bool IN = true, bool OUT = true) : this(root, target, IN, OUT)
             {
-                Meta = meta;
                 GenerateFilters(combo, ref ItemID);
             }
-            public Filter(FilterMeta meta, MyItemType type)
+            public Filter(MyItemType type, RootMeta root, MyFixedPoint target, bool IN = true, bool OUT = true) : this(root, target, IN, OUT)
             {
-                Meta = meta;
                 GenerateFilters(type, ref ItemID);
             }
-            public Filter(FilterMeta meta, MyDefinitionId id)
+            public Filter(MyDefinitionId id, RootMeta root, MyFixedPoint target, bool IN = true, bool OUT = true) : this(root, target, IN, OUT)
             {
-                Meta = meta;
                 GenerateFilters(id, ref ItemID);
             }
         }
@@ -468,11 +396,11 @@ namespace IngameScript
                 DEFAULT_IN = true;
                 DEFAULT_OUT = true;
 
-                string[] data = customData.Split('\n'); //inventory.Block.CustomData.Split('\n');                                     // Break customData into lines
+                string[] data = customData.Split('\n');   // Break customData into lines
 
-                foreach (string nextline in data)                                                               // Iterate each line
+                foreach (string nextline in data)         // Iterate each line
                 {
-                    if (nextline.Length == 0)                                                                   // Line must contain information
+                    if (nextline.Length == 0)             // Line must contain information
                         continue;
 
                     /// OPTION CHANGE ///
@@ -547,8 +475,7 @@ namespace IngameScript
 
                 if (itemID != "null")
                 {
-                    FilterMeta meta = new FilterMeta(Meta, bIn, bOut, , target);
-                    Filters.Add(new Filter(meta, itemID));
+                    Filters.Add(new Filter(itemID, Meta, target, bIn, bOut));
                 }
 
             }
@@ -563,10 +490,10 @@ namespace IngameScript
             {
                 Inventory = inventory;
                 ItemType = item.Type;
+                CurrentAmount = item.Amount;
             }
             public bool Refresh(out MyFixedPoint change)
             {
-                OldAmount = CurrentAmount;
                 bool success;
 
                 if (Inventory == null)
@@ -592,49 +519,49 @@ namespace IngameScript
                 }
 
                 change = CurrentAmount - OldAmount;
+                OldAmount = CurrentAmount;
                 return success;
             }
         }
         public class Production : Root
         {
-            public MyDefinitionId Def;
-            public string ProducerType;
-
-            public Filter Filter;
+            public ProdMeta Meta;
             public MyFixedPoint Current;
             public List<Tally> Tallies;
 
             public Production(ProdMeta meta, RootMeta root) : base(root)
             {
-                Def = meta.Def;
-                ProducerType = meta.ProducerType;
-                Filter = new Filter(meta.Filter, Def);
+                Meta = meta;
                 Tallies = new List<Tally>();
             }
-
-            public void TallyUpdate(Inventory sourceInventory, ref SearchCounter counter)
+            public void TallyUpdate(Inventory peekInventory, ref SearchCounter counter)
             {
-                IMyInventory inventory = PullInventory(sourceInventory, false);
+                IMyInventory inventory = PullInventory(peekInventory, false);
                 List<MyInventoryItem> items = new List<MyInventoryItem>();
                 inventory.GetItems(items);
 
+                int intervalCount = items.Count / ItemSearchCap;
+                Meta.Filter.Root.Program.TallyLoopTotal = intervalCount > Meta.Filter.Root.Program.TallyLoopTotal ? intervalCount : Meta.Filter.Root.Program.TallyLoopTotal;
+
+                counter.Reset(Count.SEARCHED);
+
                 foreach (MyInventoryItem item in items)
                 {
-                    if (counter.Increment(Count.ITEMS))
+                    if (counter.Increment(Count.SEARCHED))
                         break;
 
-                    if (!FilterCompare(Filter, item))
+                    if (!FilterCompare(Meta.Filter, item))
                         continue;
 
-                    Tally sourceTally = Tallies.Find(x => x.Inventory == sourceInventory);
+                    Tally sourceTally = Tallies.Find(x => x.Inventory == peekInventory);
                     if (sourceTally == null)
                     {
-
-                        sourceTally = new Tally(rMeta, sourceInventory, item);
+                        sourceTally = new Tally(rMeta, peekInventory, item);
                         Tallies.Add(sourceTally);
                     }
 
                     MyFixedPoint change = 0;
+
                     if (!sourceTally.Refresh(out change))
                     {
                         Tallies.Remove(sourceTally);
@@ -643,10 +570,9 @@ namespace IngameScript
                     Current += change;
                 }
             }
-
             public override void Update()
             {
-                if (Current >= Filter.Meta.Target)
+                if (Current >= Meta.Filter.Target)
                 {
                     // Add excess que removal logic here later
                     return;
@@ -670,7 +596,7 @@ namespace IngameScript
                             nextList.RemoveAt(i);
                         }
 
-                    existingQues.AddRange(nextList.FindAll(x => FilterCompare(Filter, x)));
+                    existingQues.AddRange(nextList.FindAll(x => FilterCompare(Meta.Filter, x)));
                 }
 
                 MyFixedPoint existingQueAmount = 0;
@@ -678,7 +604,7 @@ namespace IngameScript
                     existingQueAmount += item.Amount;
 
                 MyFixedPoint projectedTotal = Current + existingQueAmount;
-                MyFixedPoint projectedOverage = Filter.Meta.Target - projectedTotal;
+                MyFixedPoint projectedOverage = Meta.Filter.Target - projectedTotal;
 
                 if (projectedOverage >= 0)
                 {
@@ -690,7 +616,7 @@ namespace IngameScript
                         producer.ProdBlock.GetQueue(existingQues);
                         for (int i = 0; i < existingQues.Count; i++)
                         {
-                            if (!FilterCompare(Filter, existingQues[i]))
+                            if (!FilterCompare(Meta.Filter, existingQues[i]))
                                 continue;
 
                             remove = projectedOverage > existingQues[i].Amount ? existingQues[i].Amount : projectedOverage;
@@ -705,7 +631,7 @@ namespace IngameScript
                     qeueIndividual = (int)qeueIndividual;                                       // Removal decimal place
 
                     foreach (Producer producer in candidates)                                  // Distribute
-                        producer.ProdBlock.AddQueueItem(Def, qeueIndividual);
+                        producer.ProdBlock.AddQueueItem(Meta.Def, qeueIndividual);
                 }
             }
         }
@@ -725,6 +651,7 @@ namespace IngameScript
                 CustomName = TermBlock.CustomName.Replace(bMeta.Root.Signature, "");
                 BlockID = TermBlock.EntityId;
                 Priority = -1;
+                FilterProfile = new Profile(bMeta.Root);
             }
             public bool CheckBlockExists()
             {
@@ -747,8 +674,7 @@ namespace IngameScript
         public class Display : block
         {
             public IMyTextPanel Panel;
-            public string oldData;
-            public float oldFontSize;
+            public string LastData;
 
             public StringBuilder rawOutput;
             public StringBuilder fOutput;
@@ -762,12 +688,11 @@ namespace IngameScript
 
             public DisplayMeta dMeta;
 
-            public Display(BlockMeta bMeta, float fontSize = 1) : base(bMeta)
+            public Display(BlockMeta bMeta, int[] ratio) : base(bMeta)
             {
                 Panel = (IMyTextPanel)bMeta.Block;
-                RebootScreen(fontSize);
-                oldData = Panel.CustomData;
-                oldFontSize = Panel.FontSize;
+                RebootScreen(ratio);
+                LastData = Panel.CustomData;
                 rawOutput = new StringBuilder();
                 fOutput = new StringBuilder();
                 OutputIndex = 0;
@@ -783,8 +708,7 @@ namespace IngameScript
 
                 Buffer[0] = Panel.CustomData.Split('\n');
 
-                for(int i = 0; i < Buffer[0].Length; i++)
-                //foreach(string nextline in Buffer[0])
+                for (int i = 0; i < Buffer[0].Length; i++)
                 {
                     string nextline = Buffer[0][i];
 
@@ -792,95 +716,122 @@ namespace IngameScript
 
                     Buffer[1] = nextline.Split(' ');
 
-                    switch (check)
+                    try
                     {
-                        case '/': // Comment Section (ignored)
-                            break;
+                        switch (check)
+                        {
+                            case '/': // Comment Section (ignored)
+                                break;
 
-                        case '*': // Mode
-                            if (Contains(nextline, "stat"))
-                                dMeta.Mode = _ScreenMode.STATUS;
-                            if (Contains(nextline, "inv"))
-                                dMeta.Mode = _ScreenMode.INVENTORY;
-                            if (Contains(nextline, "prod"))
-                                dMeta.Mode = _ScreenMode.PRODUCTION;
-                            if (Contains(nextline, "res"))
-                                dMeta.Mode = _ScreenMode.RESOURCE;
-                            if (Contains(nextline, "tally"))
-                                dMeta.Mode = _ScreenMode.TALLY;
-                            break;
+                            case '*': // Mode
+                                if (Contains(nextline, "stat"))
+                                    dMeta.Mode = _ScreenMode.STATUS;
+                                if (Contains(nextline, "inv"))
+                                    dMeta.Mode = _ScreenMode.INVENTORY;
+                                if (Contains(nextline, "prod"))
+                                    dMeta.Mode = _ScreenMode.PRODUCTION;
+                                if (Contains(nextline, "res"))
+                                    dMeta.Mode = _ScreenMode.RESOURCE;
+                                if (Contains(nextline, "tally"))
+                                    dMeta.Mode = _ScreenMode.TALLY;
+                                break;
 
-                        case '@': // Target
-                            if (Contains(nextline, "block"))
-                            {
-                                //Operation
-                                block block = rMeta.Program.Blocks.Find(x => x.TermBlock.CustomName.Contains(Buffer[1][1]));
-
-                                if (block != null)
+                            case '@': // Target
+                                if (Contains(nextline, "block"))
                                 {
+                                    //Operation
+                                    block block = rMeta.Program.Blocks.Find(x => x.TermBlock.CustomName.Contains(Buffer[1][1]));
 
-                                    dMeta.TargetType = _Target.BLOCK;
-                                    dMeta.TargetBlock = block;
-                                    dMeta.TargetName = block.CustomName;
+                                    if (block != null)
+                                    {
+
+                                        dMeta.TargetType = _Target.BLOCK;
+                                        dMeta.TargetBlock = block;
+                                        dMeta.TargetName = block.CustomName;
+                                    }
+                                    else
+                                    {
+                                        dMeta.TargetType = _Target.DEFAULT;
+                                        dMeta.TargetName = "Block not found!";
+                                    }
+                                    break;
                                 }
-                                else
+                                if (Contains(nextline, "group"))
                                 {
-                                    dMeta.TargetType = _Target.DEFAULT;
-                                    dMeta.TargetName = "Block not found!";
+                                    IMyBlockGroup targetGroup = rMeta.Program.BlockGroups.Find(x => x.Name.Contains(Buffer[1][1]));
+                                    if (targetGroup != null)
+                                    {
+                                        dMeta.TargetType = _Target.GROUP;
+                                        dMeta.TargetGroup = targetGroup;
+                                        dMeta.TargetName = targetGroup.Name;
+                                    }
+                                    else
+                                    {
+                                        dMeta.TargetType = _Target.DEFAULT;
+                                        dMeta.TargetName = "Group not found!";
+                                    }
+                                    break;
                                 }
                                 break;
-                            }
-                            if (Contains(nextline, "group"))
-                            {
-                                IMyBlockGroup targetGroup = rMeta.Program.BlockGroups.Find(x => x.Name.Contains(Buffer[1][1]));
-                                if (targetGroup != null)
+
+                            case '&':   // Option
+                                if (Contains(nextline, "scroll"))
                                 {
-                                    dMeta.TargetType = _Target.GROUP;
-                                    dMeta.TargetGroup = targetGroup;
-                                    dMeta.TargetName = targetGroup.Name;
+                                    int newDelay = Convert.ToInt32(Buffer[1][1]);
+                                    Delay = newDelay > 0 ? newDelay : 10;
                                 }
-                                else
+                                if (Contains(nextline, "f_size"))
                                 {
-                                    dMeta.TargetType = _Target.DEFAULT;
-                                    dMeta.TargetName = "Group not found!";
+                                    Panel.FontSize = Convert.ToInt32(Buffer[1][1]);
+                                }
+                                if (Contains(nextline, "f_col"))
+                                {
+                                    Color newColor = new Color(
+                                        Convert.ToInt32(Buffer[1][1]),
+                                        Convert.ToInt32(Buffer[1][2]),
+                                        Convert.ToInt32(Buffer[1][3]));
+
+                                    Panel.FontColor = newColor;
+                                }
+                                if (Contains(nextline, "b_col"))
+                                {
+                                    Color newColor = new Color(
+                                        Convert.ToInt32(Buffer[1][1]),
+                                        Convert.ToInt32(Buffer[1][2]),
+                                        Convert.ToInt32(Buffer[1][3]));
+
+                                    Panel.BackgroundColor = newColor;
                                 }
                                 break;
-                            }
-                            break;
 
-                        case '&':   // Option
-                            if (Contains(nextline, "scroll"))
-                            {
-                                int newDelay = Convert.ToInt32(Buffer[1][1]);
-                                Delay = newDelay > 0 ? newDelay : 10;
-                            }
-                            break;
+                            case '#':   // Notation
+                                if (Contains(nextline, "def"))
+                                    dMeta.Notation = _Notation.DEFAULT;
+                                if (Contains(nextline, "simp"))
+                                    dMeta.Notation = _Notation.SIMPLIFIED;
+                                if (Contains(nextline, "sci"))
+                                    dMeta.Notation = _Notation.SCIENTIFIC;
+                                if (Contains(nextline, "%"))
+                                    dMeta.Notation = _Notation.PERCENT;
+                                break;
 
-                        case '#':   // Notation
-                            if (Contains(nextline, "def"))
-                                dMeta.Notation = _Notation.DEFAULT;
-                            if (Contains(nextline, "simp"))
-                                dMeta.Notation = _Notation.SIMPLIFIED;
-                            if (Contains(nextline, "sci"))
-                                dMeta.Notation = _Notation.SCIENTIFIC;
-                            if (Contains(nextline, "%"))
-                                dMeta.Notation = _Notation.PERCENT;
-                            break;
-
-                        default:
-                            FilterProfile.Append(nextline);
-                            break;
+                            default:
+                                FilterProfile.Append(nextline);
+                                break;
+                        }
                     }
+                    catch { }
                 }
             }
-            public void RebootScreen(float fontSize, int[] ratio = null)
+            public void RebootScreen(int[] ratio)
             {
-                if (Panel == null)
+                if (Panel == null ||
+                    ratio == null ||
+                    ratio.Length < 2)
                     return;
 
                 Panel.ContentType = ContentType.TEXT_AND_IMAGE;
                 Panel.Font = "Monospace";
-                Panel.FontSize = fontSize;
                 ScreenRatio = ratio == null ? DefScreenRatio : ratio;
             }
             public void DisplayUpdate()
@@ -1243,7 +1194,7 @@ namespace IngameScript
                     return;
                 }
 
-                itemTotals = ItemListBuilder(itemTotals, items);
+                itemTotals = ItemListBuilder(itemTotals, items, null, rMeta.Program.LIT_DEFS);
 
                 foreach (var next in itemTotals)
                     rawOutput.Append(ParseItemTotal(next, dMeta) + "\n");
@@ -1255,14 +1206,14 @@ namespace IngameScript
                 foreach (Production prod in rMeta.Program.Productions)
                 {
                     rawOutput.Append("\n@" + Seperator);
-                    string nextDef = prod.Filter.ItemID[1];
+                    string nextDef = prod.Meta.Filter.ItemID[1];
                     rawOutput.Append(nextDef + Seperator);
                     rMeta.Program.ProdCharBuffer = (rMeta.Program.ProdCharBuffer > nextDef.Length) ? rMeta.Program.ProdCharBuffer : nextDef.Length;
 
                     rawOutput.Append(
-                        prod.ProducerType + Seperator +
+                        prod.Meta.ProducerType + Seperator +
                         prod.Current + Seperator +
-                        prod.Filter.Meta.Target);
+                        prod.Meta.Filter.Target);
                 }
             }
             void ItemTallyBuilder()
@@ -1277,13 +1228,12 @@ namespace IngameScript
 
                 Dictionary<string, MyFixedPoint> itemTotals = new Dictionary<string, MyFixedPoint>();
                 List<MyInventoryItem> items = new List<MyInventoryItem>();
-                //Inventory targetInventory;
 
                 switch (dMeta.TargetType)
                 {
                     case _Target.BLOCK:
                         PullInventory((Inventory)dMeta.TargetBlock).GetItems(items);
-                        ItemListBuilder(itemTotals, items, FilterProfile);
+                        ItemListBuilder(itemTotals, items, FilterProfile, rMeta.Program.LIT_DEFS);
                         break;
 
                     case _Target.GROUP:
@@ -1297,7 +1247,7 @@ namespace IngameScript
                                 continue;
                             items.Clear();
                             PullInventory(targetInventory).GetItems(items);
-                            ItemListBuilder(itemTotals, items, FilterProfile);
+                            ItemListBuilder(itemTotals, items, FilterProfile, rMeta.Program.LIT_DEFS);
                         }
                         break;
                 }
@@ -1424,7 +1374,7 @@ namespace IngameScript
                 FilterProfile.Setup(TermBlock.CustomData);
             }
 
-            void TallyUpdates()
+            public void Tally()
             {
                 rMeta.Program.Counter.Reset();
 
@@ -1435,15 +1385,17 @@ namespace IngameScript
             }
             public void Sort()
             {
+                rMeta.Program.Counter.Reset();
+
                 if (FilterProfile.EMPTY ||
                     InventoryEmptyCheck()) // Assembler anti-clog
                     Empty();
 
+                rMeta.Program.Counter.Reset(Count.SEARCHED);
+
                 if (FilterProfile.FILL &&
                     InventoryFillCheck())
                     Fill();
-
-                //RotateInventory(inventory);
             }
             public virtual bool InventoryEmptyCheck()
             {
@@ -1455,10 +1407,10 @@ namespace IngameScript
             }
             public void Empty()
             {
-                IMyInventory sourceInventory = PullInventory(this, false);
-                List<MyInventoryItem> sourceItems = new List<MyInventoryItem>();
-                sourceInventory.GetItems(sourceItems);
-                MyFixedPoint target;
+                IMyInventory reqInventory = PullInventory(this, false);
+                List<MyInventoryItem> requestItems = new List<MyInventoryItem>();
+                reqInventory.GetItems(requestItems);
+                MyFixedPoint retain;
 
                 /*
                 Items moved
@@ -1468,33 +1420,36 @@ namespace IngameScript
 
                 rMeta.Program.Counter.Reset();
 
-                foreach (MyInventoryItem nextItem in sourceItems)
+                foreach (MyInventoryItem nextItem in requestItems)
                 {
+                    MyInventoryItem snapShotBuffer = nextItem;
+
                     if (rMeta.Program.Counter.Check(Count.MOVED)) // Total Items moved
                         break;
 
-                    if (rMeta.Program.Counter.Increment(Count.ITEMS)) // Total Items searched
+                    if (rMeta.Program.Counter.Increment(Count.SEARCHED)) // Total Items searched
                         break;
 
-                    if (ProfileCompare(FilterProfile, nextItem, out target, false))
+                    if (!ProfileCompare(FilterProfile, nextItem, out retain, false))
                         continue;
 
                     for (int i = rMeta.Program.InvSearchIndex; i < (rMeta.Program.InvSearchIndex + InvSearchCap) && i < rMeta.Program.Inventories.Count(); i++)
                     {
+
+                        if (!CheckDisplacement(ref snapShotBuffer, nextItem.Type, reqInventory, retain, false))
+                            break;
+
                         if (rMeta.Program.Counter.Check(Count.MOVED)) // Total Items moved
                             break;
-                        EmptyToCandidate(this, rMeta.Program.Inventories[i], nextItem);
+
+                        EmptyToCandidate(rMeta.Program.Inventories[i], nextItem, retain);
                     }
                 }
             }
             public void Fill()
             {
-
-
                 if (FilterProfile.Filters.Count() <= 0)
                     return; // No Filters to pull
-
-
                 /*
                 Items moved
                 Inv searched
@@ -1504,11 +1459,13 @@ namespace IngameScript
                 rMeta.Program.Counter.Reset();
 
                 if (CallBackIndex != -1 &&
-                    !FillFromCandidate(this, rMeta.Program.Inventories[this.CallBackIndex]))
+                    !FillFromCandidate(this, rMeta.Program.Inventories[CallBackIndex]))
                     CallBackIndex = -1;
 
                 for (int i = rMeta.Program.InvSearchIndex; i < (rMeta.Program.InvSearchIndex + InvSearchCap) && i < rMeta.Program.Inventories.Count(); i++)
                 {
+                    rMeta.Program.Counter.Reset(Count.SEARCHED);
+
                     if (rMeta.Program.Counter.Check(Count.MOVED))
                         return;
 
@@ -1529,7 +1486,17 @@ namespace IngameScript
                     source.TransferItemTo(source, 0, count);
             }
 
-            
+            bool CheckDisplacement(ref MyInventoryItem newSnapshot, MyItemType sample, IMyInventory source, MyFixedPoint target, bool fill)
+            {
+                MyInventoryItem? chk = source.FindItem(sample);
+                if (chk != null)
+                {
+                    newSnapshot = (MyInventoryItem)chk;
+                    return fill ? target > newSnapshot.Amount : target < newSnapshot.Amount;
+                }
+                return fill;
+            }
+
             bool CheckInventoryLink(Inventory outbound, Inventory inbound)
             {
                 if (outbound == inbound)
@@ -1541,82 +1508,81 @@ namespace IngameScript
                 if (PullInventory(inbound).IsFull)
                     return false;
 
-                return true;
+                IMyInventory inInv = PullInventory(inbound);
+
+                return (float)inInv.CurrentVolume / (float)inInv.MaxVolume < CriticalItemThreshold;
             }
-            void EmptyToCandidate(Inventory source, Inventory target, MyInventoryItem currentItem)
+            void EmptyToCandidate(Inventory candidate, MyInventoryItem currentSnapShot, MyFixedPoint retain)
             {
-                if (!CheckInventoryLink(source, target))
+                if (!CheckInventoryLink(this, candidate))
                     return;
 
-                IMyInventory targetInventory = PullInventory(target);
-                IMyInventory sourceInventory = PullInventory(source, false);
+                IMyInventory targetInventory = PullInventory(candidate);
+                IMyInventory reqInventory = PullInventory(this, false);
 
-                MyFixedPoint value;
-                if (!ProfileCompare(source.FilterProfile, currentItem, out value))
+                MyFixedPoint outAdjusted = currentSnapShot.Amount - retain;
+                MyFixedPoint target;
+
+                if (!ProfileCompare(candidate.FilterProfile, currentSnapShot, out target))
                     return;
 
-                if (value != 0)
+                if (target != 0)
                 {
-                    MyItemType itemType = currentItem.Type;
-                    MyFixedPoint sourceCurrentAmount = 0;
+                    MyInventoryItem targetExisting = new MyInventoryItem();
 
-                    MyInventoryItem? sourceCheck = sourceInventory.FindItem(itemType);
-                    if (sourceCheck != null)
-                    {
-                        MyInventoryItem sourceItem = (MyInventoryItem)sourceCheck;
-                        sourceCurrentAmount = sourceItem.Amount;
-                    }
+                    if (!CheckDisplacement(ref targetExisting, currentSnapShot.Type, targetInventory, target, true))
+                        return;
 
-                    if (value > sourceCurrentAmount)
-                    {
-                        sourceInventory.TransferItemTo(targetInventory, currentItem, value - sourceCurrentAmount);
-                        rMeta.Program.Counter.Increment(Count.MOVED);
-                    }
+                    MyFixedPoint inAdjusted = targetExisting.Amount - target;
+                    MyFixedPoint finalAdjust = outAdjusted > inAdjusted ? outAdjusted : inAdjusted;
+
+                    reqInventory.TransferItemTo(targetInventory, currentSnapShot, finalAdjust);
+                    rMeta.Program.Counter.Increment(Count.MOVED);
+
                 }
                 else
                 {
-                    sourceInventory.TransferItemTo(targetInventory, currentItem);
+                    reqInventory.TransferItemTo(targetInventory, currentSnapShot, outAdjusted);
                     rMeta.Program.Counter.Increment(Count.MOVED);
                 }
             }
-            bool FillFromCandidate(Inventory source, Inventory target)
+            bool FillFromCandidate(Inventory requesting, Inventory candidate)
             {
-                if (!CheckInventoryLink(target, source))
+                if (!CheckInventoryLink(candidate, requesting))
                     return false;
 
-                IMyInventory sourceInventory = PullInventory(source);
-                IMyInventory targetInventory = PullInventory(target, false);
+                IMyInventory reqInventory = PullInventory(requesting);
+                IMyInventory canInventory = PullInventory(candidate, false);
 
                 // Populate items
-                List<MyInventoryItem> targetItems = new List<MyInventoryItem>();
-                targetInventory.GetItems(targetItems);
+                List<MyInventoryItem> candidateItems = new List<MyInventoryItem>();
+                canInventory.GetItems(candidateItems);
                 MyFixedPoint targetAmount = 0;
                 bool callback = false;
 
-                foreach (MyInventoryItem nextItem in targetItems)
+                foreach (MyInventoryItem nextItem in candidateItems)
                 {
-                    if (sourceInventory.IsFull)
+                    if (reqInventory.IsFull)
                         break;
 
-                    if (rMeta.Program.Counter.Increment(Count.ITEMS))
+                    if (rMeta.Program.Counter.Increment(Count.SEARCHED))
                         break;
 
                     MyFixedPoint value = 0;
 
-                    if (!(source is Refinery) &&                                           // Refineries get override privledges
-                        !ProfileCompare(target.FilterProfile, nextItem, out value, false))   // Check aloud to leave
+                    if (!(requesting is Refinery) &&                                           // Refineries get override privledges
+                        !ProfileCompare(candidate.FilterProfile, nextItem, out value, false))   // Check aloud to leave
                         continue;
 
-                    if (!ProfileCompare(source.FilterProfile, nextItem, out value))          // Check if it fits the pull request
+                    if (!ProfileCompare(requesting.FilterProfile, nextItem, out value))          // Check if it fits the pull request
                         continue;
-
 
                     if (value != 0)
                     {
                         MyItemType itemType = nextItem.Type;
                         MyFixedPoint sourceCurrentAmount = 0;
 
-                        MyInventoryItem? sourceCheck = sourceInventory.FindItem(itemType);
+                        MyInventoryItem? sourceCheck = reqInventory.FindItem(itemType);
                         if (sourceCheck != null)
                         {
                             MyInventoryItem sourceItem = (MyInventoryItem)sourceCheck;
@@ -1625,8 +1591,8 @@ namespace IngameScript
 
                         if (value > sourceCurrentAmount)
                         {
-                            targetInventory.TransferItemTo(sourceInventory, nextItem, value - sourceCurrentAmount);
-                            source.CallBackIndex = rMeta.Program.Inventories.FindIndex(x => x == target);
+                            canInventory.TransferItemTo(reqInventory, nextItem, value - sourceCurrentAmount);
+                            requesting.CallBackIndex = rMeta.Program.Inventories.FindIndex(x => x == candidate);
                             callback = true;
                             if (rMeta.Program.Counter.Increment(Count.MOVED))
                                 break;
@@ -1635,15 +1601,15 @@ namespace IngameScript
 
                     else
                     {
-                        targetInventory.TransferItemTo(sourceInventory, nextItem);
-                        source.CallBackIndex = rMeta.Program.Inventories.FindIndex(x => x == target);
+                        canInventory.TransferItemTo(reqInventory, nextItem);
+                        requesting.CallBackIndex = rMeta.Program.Inventories.FindIndex(x => x == candidate);
                         callback = true;
                         if (rMeta.Program.Counter.Increment(Count.MOVED))
                             break;
                     }
                 }
 
-                rMeta.Program.Counter.Reset(Count.ITEMS);
+                rMeta.Program.Counter.Reset(Count.SEARCHED);
                 return callback;
             }
         }
@@ -1651,7 +1617,7 @@ namespace IngameScript
         {
             public Cargo(BlockMeta meta) : base(meta)
             {
-                
+
             }
         }
         public class Producer : Inventory
@@ -1662,6 +1628,10 @@ namespace IngameScript
             public Producer(BlockMeta meta) : base(meta)
             {
                 ProdBlock = (IMyProductionBlock)meta.Block;
+
+                if (ProdBlock is IMyAssembler)
+                    ((IMyAssembler)ProdBlock).CooperativeMode = false;
+
                 CLEAN = true;
             }
 
@@ -1724,7 +1694,7 @@ namespace IngameScript
 
 
         /// Helpers
-        static Dictionary<string, MyFixedPoint> ItemListBuilder(Dictionary<string, MyFixedPoint> dictionary, List<MyInventoryItem> items, Profile profile = null)
+        static Dictionary<string, MyFixedPoint> ItemListBuilder(Dictionary<string, MyFixedPoint> dictionary, List<MyInventoryItem> items, Profile profile = null, bool lit = false)
         {
             foreach (MyInventoryItem nextItem in items)
             {
@@ -1732,14 +1702,22 @@ namespace IngameScript
                 if (profile != null && !ProfileCompare(profile, nextItem, out target))
                     continue;
 
-                string itemName = nextItem.Type.ToString().Split('/')[1];
                 string itemAmount = nextItem.Amount.ToString();
+                string itemName = string.Empty;
+                if (lit)
+                {
+                    itemName = nextItem.Type.ToString().Replace("MyObjectBuilder_", "");
+                }
+                else
+                {
+                    itemName = nextItem.Type.ToString().Split('/')[1];
 
-                if (nextItem.Type.TypeId.Split('_')[1] == "Ore" || nextItem.Type.TypeId.Split('_')[1] == "Ingot")   // Distinguish between Ore and Ingot Types
-                    itemName = nextItem.Type.TypeId.Split('_')[1] + ":" + nextItem.Type.SubtypeId;
+                    if (nextItem.Type.TypeId.Split('_')[1] == "Ore" || nextItem.Type.TypeId.Split('_')[1] == "Ingot")   // Distinguish between Ore and Ingot Types
+                        itemName = nextItem.Type.TypeId.Split('_')[1] + ":" + nextItem.Type.SubtypeId;
 
-                if (nextItem.Type.TypeId.Split('_')[1] == "Ingot" && nextItem.Type.SubtypeId == "Stone")
-                    itemName = "Gravel";
+                    if (nextItem.Type.TypeId.Split('_')[1] == "Ingot" && nextItem.Type.SubtypeId == "Stone")
+                        itemName = "Gravel";
+                }
 
                 if (!dictionary.ContainsKey(itemName))  // Summate like stacks into same dictionary value
                     dictionary[itemName] = nextItem.Amount;
@@ -1815,7 +1793,6 @@ namespace IngameScript
             {
                 case _Notation.PERCENT: // has no use here
                 case _Notation.DEFAULT:
-                    //nextOut += item.Value.ToString();
                     nextOut += ((int)item.Value).ToString();    // decimaless def
                     break;
 
@@ -1846,12 +1823,6 @@ namespace IngameScript
             if (target == null)
                 return true;
 
-            /*if (source == null && target == null)
-                return true;
-
-            if (source == null || target == null)
-                return false;*/
-
             if (source.IndexOf(target, StringComparison.OrdinalIgnoreCase) >= 0)
                 return true;
 
@@ -1861,7 +1832,8 @@ namespace IngameScript
         {
             return FilterCompare(
                 A.ItemID[0], A.ItemID[1],
-                B.Type.TypeId, B.Type.SubtypeId);
+                B.Type.TypeId.Replace("MyObjectBuilder_", ""),
+                B.Type.SubtypeId);
         }
         static bool FilterCompare(Filter A, MyProductionItem B)
         {
@@ -1872,10 +1844,11 @@ namespace IngameScript
         }
         static bool FilterCompare(string a, string A, string b, string B)
         {
-            if (a != "any" && !Contains(b, a))
+
+            if (a != "any" && !Contains(a, b) && !Contains(b, a))
                 return false;
 
-            if (A != "any" && !Contains(A, B))
+            if (A != "any" && !Contains(A, B) && !Contains(B, A))
                 return false;
 
             return true;
@@ -1884,35 +1857,37 @@ namespace IngameScript
         {
             target = 0;
             bool match = false;
+            bool allow = false;
+            bool auto = false;
 
-            if (profile.Filters.Count == 0)
-            {
-                if (dirIn && profile.DEFAULT_IN)
-                    return true;
+            if (dirIn && profile.DEFAULT_IN)
+                auto = true;
 
-                if (!dirIn && profile.DEFAULT_OUT)
-                    return true;
-            }
+            if (!dirIn && profile.DEFAULT_OUT)
+                auto = true;
 
             foreach (Filter filter in profile.Filters)
             {
                 if (!FilterCompare(filter, item))
                     continue;
 
+                allow = true;
                 match = true;
 
-                if (!filter.Meta.IN_BOUND &&
+                if (!filter.IN_BOUND &&
                     dirIn)
-                    return false;
+                    allow = false;
 
-                if (!filter.Meta.OUT_BOUND &&
+                if (!filter.OUT_BOUND &&
                     !dirIn)
-                    return false;
+                    allow = false;
 
-                target = (filter.Meta.Target == 0) ? target : filter.Meta.Target;
+                target = (filter.Target == 0) ? target : filter.Target;
             }
 
-            return dirIn ? match : true;
+            bool result = match ? allow : auto;
+
+            return result;
         }
 
         static void GenerateFilters(string combo, ref string[] id)
@@ -1934,12 +1909,12 @@ namespace IngameScript
         static void GenerateFilters(MyDefinitionId def, ref string[] id) // Production
         {
             id[0] = "Component";
-            id[1] = def.SubtypeName.ToString();
+            id[1] = def.SubtypeName.ToString().Replace("Component","");
         }
         static void GenerateFilters(MyItemType type, ref string[] id)
         {
-            id[0] = type.TypeId;
-            id[1] = type.SubtypeId;
+            id[0] = type.TypeId.Replace("MyObjectBuilder_", "");
+            id[1] = type.SubtypeId.Replace("Component", "");
         }
 
         /// Initializers
@@ -1981,16 +1956,11 @@ namespace IngameScript
             Cargos.Clear();
             Producers.Clear();
             Refineries.Clear();
-            //Rotations.Clear();
 
             Productions.Clear();
             PowerConsumers.Clear();
         }
 
-        /// Inventory
-        
-        
-        
 
         /// Production
         string GenerateRecipes()
@@ -2072,16 +2042,14 @@ namespace IngameScript
         }
         void ProductionUpdate(Production prod)
         {
-            if (prod.Current >= prod.Filter.Meta.Target)
+            if (prod.Current >= prod.Meta.Filter.Target)
             {
                 // Add excess que removal logic here later
                 return;
             }
 
-            List<Producer> candidates = Producers.FindAll(x => x.ProdBlock.BlockDefinition.SubtypeId.ToString() == prod.ProducerType);
+            List<Producer> candidates = Producers.FindAll(x => x.ProdBlock.BlockDefinition.SubtypeId.ToString() == prod.Meta.ProducerType);
             List<MyProductionItem> existingQues = new List<MyProductionItem>();
-
-            Debug.Append($"ProdUpdate: {prod.Def}\n");
 
             foreach (Producer producer in candidates)
             {
@@ -2098,22 +2066,15 @@ namespace IngameScript
                         nextList.RemoveAt(i);
                     }
 
-                existingQues.AddRange(nextList.FindAll(x => FilterCompare(prod.Filter, x)));
+                existingQues.AddRange(nextList.FindAll(x => FilterCompare(prod.Meta.Filter, x)));
             }
-
-            Debug.Append($"existingQueCount: {existingQues.Count}\n");
 
             MyFixedPoint existingQueAmount = 0;
             foreach (MyProductionItem item in existingQues)
                 existingQueAmount += item.Amount;
 
-            MyFixedPoint qeueTotal = prod.Filter.Meta.Target - (prod.Current + existingQueAmount);
+            MyFixedPoint qeueTotal = prod.Meta.Filter.Target - (prod.Current + existingQueAmount);
 
-            Debug.Append(
-                $"Current: {prod.Current}\n" +
-                $"InQue: {existingQueAmount}\n" +
-                $"Target: {prod.Filter.Meta.Target}\n" +
-                $"Final: {qeueTotal}\n");
 
             if (qeueTotal <= 0)
                 return;
@@ -2123,7 +2084,7 @@ namespace IngameScript
             qeueIndividual = (int)qeueIndividual;                                       // Removal decimal place
 
             foreach (Producer producer in candidates)                                  // Distribute
-                producer.ProdBlock.AddQueueItem(prod.Def, qeueIndividual);
+                producer.ProdBlock.AddQueueItem(prod.Meta.Def, qeueIndividual);
         }
 
         /// Power
@@ -2232,6 +2193,10 @@ namespace IngameScript
         /// Main
         void RunArguments(string argument)
         {
+            if (argument == string.Empty ||
+                argument == null)
+                return;
+
             switch (argument)
             {
                 case "DETECT":
@@ -2299,6 +2264,23 @@ namespace IngameScript
                     bPowerRunning = !bPowerRunning;
                     break;
             }
+
+            // SPECIAL
+
+            try
+            {
+                InputBuffer = argument.Split(':');
+                switch (InputBuffer[0])
+                {
+                    case "RENAME":
+                        ReNameBlocks(InputBuffer[1]);
+                        break;
+                }
+            }
+            catch
+            {
+
+            }
         }
         string ProgEcho()
         {
@@ -2312,11 +2294,29 @@ namespace IngameScript
             echoOutput += $"{EchoLoop[EchoCount]} Torqk's Grid Manager {EchoLoop[EchoCount]}" +
                             "\n====================" +
                             $"\nTallyCount: {count}" +
+                            $"\nTallyLoopCount/Total: {TallyLoopCount}/{TallyLoopTotal}" +
+                            $"\nMoved/Searched Count: {Counter.Count[0]}|{Counter.Count[1]}" +
+                            $"\nMoved/Searched Total: {Counter.Total[0]}|{Counter.Total[1]}" +
                             $"\nClock Indices: {InventoryClock} : {ProdClock} : {DisplayClock}" +
-                            $"\nOperation Indices: {InvQueIndex} : {ProdQueIndex} : {DisplayQueIndex}" +
-                            $"\nSorting   : {(bSortRunning ? "Online" : "Offline")}" +
-                            $"\nTally : {(bTallyRunning ? "Online" : "Offline")}" +
-                            $"\nProduction : {(bProdRunning ? "Online" : "Offline")}" +
+                            $"\nOperation Indices: {InvQueIndex} : {ProdQueIndex} : {DisplayQueIndex}";
+            try
+            {
+                echoOutput += $"\nInv Target: {Inventories[InvQueIndex].CustomName}" +
+                    $"\nFilter Count: {Inventories[InvQueIndex].FilterProfile.Filters.Count}";// +
+
+                if (Inventories[InvQueIndex].FilterProfile.Filters.Count > 0)
+                {
+                    Filter sample = Inventories[InvQueIndex].FilterProfile.Filters[0];
+                    echoOutput += $"\n{sample.ItemID[0]}:{sample.ItemID[1]}";
+                }
+
+            }
+            catch { }
+
+
+            echoOutput += $"\nSorting      : {(bSortRunning ? "Online" : "Offline")}" +
+                            $"\nTally         : {(bTallyRunning ? "Online" : "Offline")}" +
+                            $"\nProduction : {(bProdRunning ? !bTallyCycleComplete ? "Cycling" : "Online" : "Offline")}" +
                             $"\nDisplay      : {(bDisplayRunning ? "Online" : "Offline")}" +
                             "\n====================" +
                             $"\nSearchIndex: {InvSearchIndex}" +
@@ -2384,6 +2384,20 @@ namespace IngameScript
                 if (!block.CustomName.Contains(Signature))
                     block.CustomName += Signature;
         }
+        void ReNameBlocks(string name, bool numbered = false)
+        {
+            List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
+            if (!PullSignedTerminalBlocks(blocks))
+                return;
+
+
+            for (int i = 0; i < blocks.Count; i++)
+            {
+                string lead = numbered ? i.ToString() : "";
+                blocks[i].CustomName = $"{lead}{name}";
+            }
+
+        }
         void ReFilterBlocks()
         {
             List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
@@ -2443,8 +2457,6 @@ namespace IngameScript
 
             return true;
         }
-
-
         bool BlockListBuilder()
         {
             bool setup = true;
@@ -2457,7 +2469,7 @@ namespace IngameScript
 
                 if (CheckCandidate(BatteryBlocks[i]))
                 {
-                    newBlock = new Resource(new BlockMeta(ROOT, BatteryBlocks[i]),_ResType.BATTERY);
+                    newBlock = new Resource(new BlockMeta(ROOT, BatteryBlocks[i]), _ResType.BATTERY);
                     Resources.Add((Resource)newBlock);
 
                     Blocks.Add(newBlock);
@@ -2518,7 +2530,7 @@ namespace IngameScript
 
                 if (CheckCandidate(PanelBlocks[i]))
                 {
-                    newBlock = new Display(new BlockMeta(ROOT, PanelBlocks[i]));
+                    newBlock = new Display(new BlockMeta(ROOT, PanelBlocks[i]), DefScreenRatio);
                     PowerConsumers.Add(newBlock);
                     Displays.Add((Display)newBlock);
 
@@ -2588,49 +2600,6 @@ namespace IngameScript
             SetupQueIndex += SetupCap;
             return setup;
         }
-        public enum BlockType
-        {
-            DISPLAY,
-            CARGO,
-            PRODUCER,
-            REFINERY,
-            POW_CON,
-            RESOURCE
-        }
-
-        static void BuildBlock<T>(T termBlock) where T : class
-        {
-            if (typeof(T) == typeof(IMyRefinery))
-            {
-
-            }
-
-            if (typeof(T) == typeof(IMyAssembler))
-            {
-
-            }
-
-            if (typeof(T) == typeof(IMyCargoContainer))
-            {
-
-            }
-
-            /*if (typeof(T) == typeof(IMyInventoryOwner))
-            {
-
-            }*/
-
-            if (typeof(T) == typeof(IMyTextPanel))
-            {
-
-            }
-
-            if (typeof(T) == typeof(IMyTerminalBlock))
-            {
-
-            }
-        }
-
         void BlockListUpdate()
         {
             // Persistent Updates
@@ -2654,16 +2623,32 @@ namespace IngameScript
                         Inventories[InvQueIndex].Sort();
 
                     if (bTallyRunning)
-                        Inventories[InvQueIndex].Tally;
+                        Inventories[InvQueIndex].Tally();
                 }
 
                 InvSearchIndex += InvSearchCap;
                 if (InvSearchIndex >= Inventories.Count)
                 {
-                    bTallyCycleComplete = true;
                     InvSearchIndex = 0;
                     InvQueIndex++;
-                    InvQueIndex = (InvQueIndex >= Inventories.Count) ? 0 : InvQueIndex;
+                    if (InvQueIndex >= Inventories.Count)
+                    {
+                        InvQueIndex = 0;
+                        Counter.HardReset();
+                        if (!bTallyCycleComplete)
+                        {
+
+                            TallyLoopCount++;
+
+                            if (TallyLoopCount >= TallyLoopTotal)
+                            {
+                                bTallyCycleComplete = true;
+                                //Runtime.UpdateFrequency = UpdateFrequency.Update10;
+                            }
+
+                            TallyLoopTotal = 0;
+                        }
+                    }
                 }
             }
 
@@ -2684,6 +2669,9 @@ namespace IngameScript
                 DisplayClock == ClockCycle &&
                 Displays.Count > 0)
             {
+                //mySurface.WriteText(Debug);
+                Debug.Clear();
+
                 Displays[DisplayQueIndex].DisplayUpdate();
 
                 DisplayQueIndex++;
@@ -2717,7 +2705,7 @@ namespace IngameScript
         public void Main(string argument, UpdateType updateSource)
         {
             string output = ProgEcho();
-            //Echo(output);
+            Echo(output);
             mySurface.WriteText(output);
 
             RunArguments(argument);
@@ -2745,13 +2733,11 @@ namespace IngameScript
                 }
                 catch
                 {
-                    //Debug.Append("FAIL-POINT!\n");
                     FAIL = true;
                 }
             }
 
-            //mySurface.WriteText(Debug);
-            Debug.Clear();
+
         }
         public void Save()
         {
