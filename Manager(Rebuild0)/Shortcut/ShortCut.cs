@@ -420,6 +420,19 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             WORK,
             CHAIN
         }
+        public enum WorkType
+        {
+            NONE,
+            SCAN,
+            PUMP
+        }
+        public enum CompareType
+        {
+            NONE,
+            STR_TYPE,
+            STR_SUB,
+            SLOT
+        }
 
         public struct RootMeta
         {
@@ -494,41 +507,55 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         public struct Job
         {
             public Root Requester;
-            public string Comparison;
-            //public string ItemSubType;
+            //public Filter fCompare;
+            public string strCompare;
             public int WIxA;
             public int WIxB;
-            public JobType Type;
+            public JobType JobType;
+            public WorkType WorkType;
+            public CompareType Comparison;
             public TallyGroup Target;
 
-            public Job(JobType type = JobType.CHAIN, TallyGroup target = TallyGroup.ALL)
+            public Job(JobType job = JobType.CHAIN, WorkType work = WorkType.NONE, TallyGroup target = TallyGroup.ALL)
             {
-                Type = type;
+                JobType = job;
+                WorkType = work;
+                Target = target;
+                Comparison = CompareType.NONE;
+
                 Requester = null;
-                Comparison = null;
+                //fCompare = null;
+                strCompare = null;
                 WIxA = 0;
                 WIxB = 0;
-                Target = target;
             }
 
-            public Job(JobType type, Root requester, int wixA = 0, int wixB = 0)
+            public Job(JobType type, WorkType work, Root requester, int wixA = 0, int wixB = 0)
             {
-                Type = type;
+                JobType = type;
+                WorkType = work;
+                Target = TallyGroup.ALL;
+                Comparison = CompareType.NONE;
+
                 Requester = requester;
+                //fCompare = null;
+                strCompare = null;
                 WIxA = wixA;
                 WIxB = wixB;
-                Comparison = null;
-                Target = TallyGroup.ALL;
             }
 
-            public Job(JobType type, string compare, int wixA = 0, int wixB = 0)
+            public Job(JobType type, WorkType work, string compare, int wixA = 0, int wixB = 0)
             {
-                Type = type;
+                JobType = type;
+                WorkType = work;
+                Target = TallyGroup.ALL;
+                Comparison = CompareType.NONE;
+
                 Requester = null;
+                //fCompare = null;
+                strCompare = compare;
                 WIxA = wixA;
                 WIxB = wixB;
-                Comparison = compare;
-                Target = TallyGroup.ALL;
             }
         }
 
@@ -593,6 +620,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             {
                 if (Profile != null)
                 {
+                    Dlog($"SlotCheck: {NEW.Type} || {Profile.Type}");
                     if (NEW.Type != Profile.Type)
                     {
                         Profile.Update(-OLD.Amount);
@@ -1013,10 +1041,9 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         {
             public Op MyOp;
             public Work Chain;
+            public Job MyJob;
             public Job ChainJob;
             public string Name;
-            //public bool ACTIVE;
-            public bool FIND;
             public bool WAIT;
             public int SIx = 0;
             public int SearchCount = 0;
@@ -1028,7 +1055,9 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             }
             public virtual int WorkLoad(Job job)
             {
-                return 0; // Load complete
+                Dlog($"Performing: {Name}");
+                MyJob = job;
+                return 1; // Keep going, called via override
             }
             public virtual bool DoWork()
             {
@@ -1045,35 +1074,40 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             int Peek(int i)
             {
                 Dlog("Peeking...");
+
                 if (CheckOp(i))
                     return -1;
 
-                if (FIND)
+                switch(MyJob.JobType)
                 {
-                    Dlog("Searching...");
-                    if (Compare())
-                    {
-                        Dlog("Found!");
-                        if (Chain != null)
+                    case JobType.FIND:
+                        Dlog("Searching...");
+                        if (Compare())
                         {
-                            Dlog("ChainCall!");
-                            return ChainCall() + 1;
+                            Dlog("Found!");
+                            if (Chain != null)
+                            {
+                                Dlog("ChainCall!");
+                                return ChainCall() + 1;
+                            }
+                            else
+                                return 1;
                         }
-                        else
-                            return 1;
-                    }
-                    return 0;
-                }
-                else
-                {
-                    Dlog("Working...");
-                    if (Chain != null)
-                    {
+                        return 0;
+
+                    case JobType.WORK:
+                        Dlog("Doing work...");
+                        return DoWork() ? 1 : 0;
+
+                    case JobType.CHAIN:
+                        if (Chain == null)
+                            return 0; // fail
+                        
                         Dlog("ChainCall!");
                         return ChainCall();
-                    }
-                    Dlog("Doing work...");
-                    return DoWork() ? 1 : 0;
+
+                    default:
+                        return 0; // fail
                 }
             }
             bool CheckOp(int i)
@@ -1103,7 +1137,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         return -1;
                     }
 
-                    if (FIND && result > 0) // Found something early
+                    if (MyJob.JobType == JobType.FIND && result > 0) // Found something early
                     {
                         Dlog("Broke search early!");
                         break;
@@ -1125,7 +1159,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     if (result == -1) // Operation call max
                         return -1;
 
-                    if (FIND && result == 1) // Found something early
+                    if (MyJob.JobType == JobType.FIND && result == 1) // Found something early
                     {
                         SIx = 0;
                         return 1;
@@ -1145,7 +1179,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             }
             public override int WorkLoad(Job job)
             {
-                Dlog($"Performing: {Name}");
+                if (base.WorkLoad(job) != 1)
+                    return 0;
 
                 if (job.Requester is Slot)
                 {
@@ -1159,8 +1194,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     TypeId = ((Slot)job.Requester).NEW.Type.TypeId;
                 }
                     
-                else if (job.Comparison != null)
-                    TypeId = job.Comparison;
+                else if (job.strCompare != null)
+                    TypeId = job.strCompare;
 
                 else
                     TypeId = "any";
@@ -1192,7 +1227,6 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         }
         public class FindSubJob : Work
         {
-            public int TIx;
             string SubId;
             public FindSubJob(RootMeta meta, Op op) : base(meta, op)
             {
@@ -1200,9 +1234,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             }
             public override int WorkLoad(Job job)
             {
-                Dlog($"Performing: {Name}");
-
-                TIx = job.WIxA;
+                if (base.WorkLoad(job) != 1)
+                    return 0;
 
                 if (job.Requester is Slot)
                 {
@@ -1210,23 +1243,22 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         ChainJob.Requester = job.Requester;
                     SubId = ((Slot)job.Requester).NEW.Type.SubtypeId;
                 }
-                    
-                else if (job.Comparison != null)
-                    SubId = job.Comparison;
+                else if (job.strCompare != null)
+                    SubId = job.strCompare;
                 else
                     SubId = "any";
 
                 if (job.Requester is TallyItemType)
                     SearchCount = ((TallyItemType)job.Requester).SubTypes.Count;
                 else
-                    SearchCount = Program.AllItemTypes[TIx].SubTypes.Count;
+                    SearchCount = Program.AllItemTypes[MyJob.WIxA].SubTypes.Count;
 
                 return IterateScopeForward();
             }
             public override bool Compare()
             {
-                Dlog($"Comparing sub: {SubId} || {Program.AllItemTypes[TIx].SubTypes[SIx].Type.SubtypeId}");
-                return SubId == "any" || Program.AllItemTypes[TIx].SubTypes[SIx].Type.SubtypeId == SubId;
+                Dlog($"Comparing sub: {SubId} || {Program.AllItemTypes[MyJob.WIxA].SubTypes[SIx].Type.SubtypeId}");
+                return SubId == "any" || Program.AllItemTypes[MyJob.WIxA].SubTypes[SIx].Type.SubtypeId == SubId;
             }
             public override bool DoWork()
             {
@@ -1234,18 +1266,20 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             }
             public override int ChainCall()
             {
-                if (1 == base.ChainCall())
-                    return 1;
-
-                ChainJob.WIxA = TIx;
+                if (0 == base.ChainCall())
+                {
+                    Dlog("No Chain present!");
+                    return 0;
+                }
+                    
+                ChainJob.WIxA = MyJob.WIxA;
                 ChainJob.WIxB = SIx;
+                MyOp.CurrentWork = Chain;
                 return Chain.WorkLoad(ChainJob);
             }
         }
         public class FindSlotJob : Work
         {
-            public int TIx;
-            public int sIx;
             public List<Slot> Target;
             public FindSlotJob(RootMeta meta, Op op) : base(meta, op)
             {
@@ -1254,12 +1288,12 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
             public override int WorkLoad(Job job)
             {
-                TIx = job.WIxA;
-                sIx = job.WIxB;
+                if (base.WorkLoad(job) != 1)
+                    return 0;
 
                 if (job.Requester == null ||
                     job.Requester is Slot)
-                    Target = Program.AllItemTypes[TIx].SubTypes[sIx].Tallies[(int)job.Target];
+                    Target = Program.AllItemTypes[job.WIxA].SubTypes[job.WIxB].Tallies[(int)job.Target];
                 else if (job.Requester is Inventory)
                     Target = ((Inventory)job.Requester).Slots;
                 else
@@ -1270,7 +1304,20 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             }
             public override bool Compare()
             {
-                return false;
+                switch(MyJob.Comparison)
+                {
+                    case CompareType.STR_TYPE:
+                        return Target[SIx].NEW.Type.TypeId == MyJob.strCompare;
+
+                    case CompareType.STR_SUB:
+                        return Target[SIx].NEW.Type.SubtypeId == MyJob.strCompare;
+
+                    case CompareType.SLOT:
+                        return false; // <<<<<<<<<<<
+
+                    default:
+                        return false;
+                }
             }
             public override bool DoWork()
             {
@@ -1303,11 +1350,12 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public ScanSlotJob(RootMeta meta, Op op) : base(meta, op)
             {
                 Name = "SCAN_PROGRESS";
-                FIND = false;
             }
 
             public override int WorkLoad(Job job)
             {
+                MyJob = job;
+
                 if (!(job.Requester is Inventory))
                     return 0;
 
@@ -1460,7 +1508,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             {
                 base.Run();
 
-                if (0 == TallyScope.WorkLoad(new Job(JobType.WORK, Program.Inventories[WorkIndex])))
+                if (0 == TallyScope.WorkLoad(new Job(JobType.WORK, WorkType.SCAN, Program.Inventories[WorkIndex])))
                     Next();
 
                 return true;
@@ -1474,13 +1522,13 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public TallySorter(Program prog, bool active = true) : base(prog, active)
             {
                 TypeMatch = new FindTypeJob(prog.ROOT, this);
-                TypeMatch.FIND = true; TypeMatch.WAIT = true;
+                TypeMatch.MyJob.JobType = JobType.FIND;
+                TypeMatch.WAIT = true;
 
                 SubMatch = new FindSubJob(prog.ROOT, this);
-                SubMatch.FIND = true;
 
                 TypeMatch.Chain = SubMatch;
-                TypeMatch.ChainJob.Type = JobType.FIND;
+                TypeMatch.ChainJob.JobType = JobType.FIND;
                 TypeMatch.ChainJob.Target = TallyGroup.ALL;
 
                 Name = "TALLY";
@@ -1518,7 +1566,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 Dlog($"Processing top of sort queue: {TallyQueue[0].NEW.Type}");
                 CurrentWork = TypeMatch;
                 TallyItemSub newProf;
-                switch (TypeMatch.WorkLoad(new Job(JobType.FIND, TallyQueue[0])))
+                switch (TypeMatch.WorkLoad(new Job(JobType.FIND, WorkType.NONE, TallyQueue[0])))
                 {
                     case -1:
                         Dlog("CORE-TEMP-CRITICAL!");
@@ -1706,11 +1754,13 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
             public TallyPumper(Program prog, bool active = true) : base(prog, active)
             {
+                Name = "PUMP";
+
                 SubSearch = new FindSubJob(prog.ROOT, this);
                 SlotSearch = new FindSlotJob(prog.ROOT, this);
+
                 SubSearch.Chain = SlotSearch;
-                SubSearch.ChainJob = new Job(JobType.WORK);
-                Name = "PUMP";
+                SubSearch.ChainJob = new Job(JobType.WORK, WorkType.PUMP, TallyGroup.AVAILABLE);
             }
 
             public override bool HasWork()
@@ -1732,7 +1782,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
             bool Pumping()
             {
-                switch (SubSearch.WorkLoad(new Job(JobType.CHAIN, TallyGroup.REQUEST)))
+                switch (SubSearch.WorkLoad(new Job(JobType.CHAIN, WorkType.NONE)))
                 {
                     case -1:
                         Dlog("OVER-HEAT!");
@@ -2124,7 +2174,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             }
             string FormatString(StrForm format, string rawInput)
             {
-                ScreenCount[0] = MonoSpaceChars(ScreenRatio[0], Panel);
+                //ScreenCount[0] = MonoSpaceChars(ScreenRatio[0], Panel);
 
                 rawInput = rawInput != null ? rawInput : "";
                 string[] blocks = rawInput.Split(Split);
