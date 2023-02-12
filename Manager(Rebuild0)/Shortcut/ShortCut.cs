@@ -20,135 +20,204 @@ using VRageMath;
 
 namespace IngameScript
 {
+    #region POWAAA
+
+    /// Power
+    /*bool PowerSetup(Resource candidateMonitor)
+    {
+        foreach (block block in Blocks.Roots)
+            block.Priority = -1;
+
+        if (candidateMonitor.Type != ResType.BATTERY)
+            return false;
+
+        string[] data = candidateMonitor.TermBlock.CustomData.Split('\n');
+        int index = 0;
+
+        bool[] checks = new bool[4]; // rough inset
+        /*
+        foreach (string nextline in data)
+        {
+            if (Contains(nextline, "prod") && !checks[0])
+            {
+                index = PowerPrioritySet(Producers.Cast<block>().ToList(), index);
+                checks[0] = true;
+            }
+
+            if (Contains(nextline, "ref") && !checks[1])
+            {
+                index = PowerPrioritySet(Refineries.Cast<block>().ToList(), index);
+                checks[1] = true;
+            }
+
+            if (Contains(nextline, "farm") && !checks[2])
+            {
+                List<Resource> farms = new List<Resource>();
+                farms.AddRange(Resources.FindAll(x => x.Type == ResType.OXYFARM));
+                index = PowerPrioritySet(farms.Cast<block>().ToList(), index);
+                checks[2] = true;
+            }
+
+            if (Contains(nextline, "gen") && !checks[3])
+            {
+                List<Resource> gens = new List<Resource>();
+                gens.AddRange(Resources.FindAll(x => x.Type == ResType.GASGEN));
+                index = PowerPrioritySet(gens.Cast<block>().ToList(), index);
+                checks[3] = true;
+            }
+        }
+
+        if (index == 0)
+            return false;
+
+        PowerPrioritySet(PowerConsumers, index);
+
+        PowerConsumers = PowerConsumers.OrderBy(x => x.Priority).ToList(); // << Maybe?
+
+        PowerMonitor = candidateMonitor;
+
+        return true;
+    }
+    void PowerUpdate()
+    {
+        if (PowerMonitor == null)
+            return;
+
+        IMyBatteryBlock battery = (IMyBatteryBlock)PowerMonitor.TermBlock;
+
+        if (!bPowerCharged &&
+            battery.CurrentStoredPower / battery.MaxStoredPower >= (1 - PowerThreshold))
+            PowerAdjust(true);
+
+        if (battery.CurrentStoredPower / battery.MaxStoredPower <= PowerThreshold)
+            PowerAdjust(false);
+    }
+    int PowerPrioritySet(List<block> blocks, int start)
+    {
+        int index = 0;
+
+        foreach (block block in blocks)
+        {
+            if (block.Priority == -1)
+            {
+                block.Priority = index + start;
+                index++;
+            }
+        }
+
+        return index + start;
+    }
+    void PowerAdjust(bool bAdjustUp = true)
+    {
+        if (bAdjustUp)
+            foreach (block block in PowerConsumers)
+                ((IMyFunctionalBlock)block.TermBlock).Enabled = true;
+
+        else
+            for (int i = PowerConsumers.Count - 1; i > -1; i--)
+            {
+                if (((IMyFunctionalBlock)PowerConsumers[i].TermBlock).Enabled)
+                {
+                    ((IMyFunctionalBlock)PowerConsumers[i].TermBlock).Enabled = false;
+                    break;
+                }
+
+            }
+    }
+
+     void InvBuilder(block target)
+    {
+        if (target is Producer)
+        {
+
+            0 = InputHeader
+            x = InputCount
+            x+1 = OutputHeader
+
+
+    List<MyInventoryItem> inItems = new List<MyInventoryItem>();
+    List<MyInventoryItem> outItems = new List<MyInventoryItem>();
+
+    ((Producer) target).ProdBlock.InputInventory.GetItems(inItems);
+            ((Producer) target).ProdBlock.OutputInventory.GetItems(outItems);
+
+            OutputCount = inItems.Count + outItems.Count;
+
+            InventoryListBuilder(inItems, OutputIndex, OutputCount - 1, "|Input|");
+    InventoryListBuilder(inItems, OutputIndex - (inItems.Count + 1), OutputCount - 2, "|Output|");
+        }
+
+        else if (target is Inventory)
+        {
+            List<MyInventoryItem> items = new List<MyInventoryItem>();
+IMyInventoryOwner owner = ((Inventory)target).Owner;
+IMyInventory inventory = owner.GetInventory(0);
+inventory.GetItems(items);
+            OutputCount = items.Count;
+
+            InventoryListBuilder(items, OutputIndex, OutputCount);
+}
+
+        else
+AppendLine(StrForm.WARNING, "Invalid Block Type!\n");
+
+AppendLine(StrForm.EMPTY);
+    }
+    void InventoryListBuilder(List<MyInventoryItem> items, int startIndex, int lineCap, string header = null)
+{
+if (items.Count < 1)
+{
+    AppendLine(StrForm.WARNING, "Inventory Empty!");
+    return;
+}
+
+int count = items.Count;
+count -= header == null || startIndex != 0 ? 0 : 1;
+startIndex -= header != null && startIndex != 0 ? 1 : 0;
+
+if (header != null)
+    AppendLine(StrForm.HEADER, header);
+
+for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
+    AppendLine(StrForm.INVENTORY, RawListItem(Meta, 0, items[i].Amount, items[i].Type, Program.LIT_DEFS));
+}
+
+
+*/
+
+    #endregion
+
+    #region MOTH-BALLED
+    /*
+    public void TrashBin(Root root)
+    {
+        root.RemoveMe();
+        if (!(root is block))
+            return;
+
+        block block = (block)root;
+
+        if (block is Inventory)
+            Inventories.Remove((Inventory)block);
+
+        if (block is Resource)
+            Resources.Remove((Resource)block);
+
+        Blocks.Remove(block);
+    }
+    static bool FilterCompare(Filter A, MyItemType B)
+    {
+        return FilterCompare(
+            A.ItemID[0], A.ItemID[1],
+            B.TypeId.Replace("MyObjectBuilder_", ""),
+            B.SubtypeId);
+    }
+    */
+
+    #endregion
+
     partial class Program : MyGridProgram
     {
-
-        #region POWAAA
-
-        /// Power
-        /*bool PowerSetup(Resource candidateMonitor)
-        {
-            foreach (block block in Blocks.Roots)
-                block.Priority = -1;
-
-            if (candidateMonitor.Type != ResType.BATTERY)
-                return false;
-
-            string[] data = candidateMonitor.TermBlock.CustomData.Split('\n');
-            int index = 0;
-
-            bool[] checks = new bool[4]; // rough inset
-            /*
-            foreach (string nextline in data)
-            {
-                if (Contains(nextline, "prod") && !checks[0])
-                {
-                    index = PowerPrioritySet(Producers.Cast<block>().ToList(), index);
-                    checks[0] = true;
-                }
-
-                if (Contains(nextline, "ref") && !checks[1])
-                {
-                    index = PowerPrioritySet(Refineries.Cast<block>().ToList(), index);
-                    checks[1] = true;
-                }
-
-                if (Contains(nextline, "farm") && !checks[2])
-                {
-                    List<Resource> farms = new List<Resource>();
-                    farms.AddRange(Resources.FindAll(x => x.Type == ResType.OXYFARM));
-                    index = PowerPrioritySet(farms.Cast<block>().ToList(), index);
-                    checks[2] = true;
-                }
-
-                if (Contains(nextline, "gen") && !checks[3])
-                {
-                    List<Resource> gens = new List<Resource>();
-                    gens.AddRange(Resources.FindAll(x => x.Type == ResType.GASGEN));
-                    index = PowerPrioritySet(gens.Cast<block>().ToList(), index);
-                    checks[3] = true;
-                }
-            }
-            
-            if (index == 0)
-                return false;
-            
-            PowerPrioritySet(PowerConsumers, index);
-
-            PowerConsumers = PowerConsumers.OrderBy(x => x.Priority).ToList(); // << Maybe?
-
-            PowerMonitor = candidateMonitor;
-            
-            return true;
-        }
-        void PowerUpdate()
-        {
-            if (PowerMonitor == null)
-                return;
-
-            IMyBatteryBlock battery = (IMyBatteryBlock)PowerMonitor.TermBlock;
-
-            if (!bPowerCharged &&
-                battery.CurrentStoredPower / battery.MaxStoredPower >= (1 - PowerThreshold))
-                PowerAdjust(true);
-
-            if (battery.CurrentStoredPower / battery.MaxStoredPower <= PowerThreshold)
-                PowerAdjust(false);
-        }
-        int PowerPrioritySet(List<block> blocks, int start)
-        {
-            int index = 0;
-
-            foreach (block block in blocks)
-            {
-                if (block.Priority == -1)
-                {
-                    block.Priority = index + start;
-                    index++;
-                }
-            }
-
-            return index + start;
-        }
-        void PowerAdjust(bool bAdjustUp = true)
-        {
-            if (bAdjustUp)
-                foreach (block block in PowerConsumers)
-                    ((IMyFunctionalBlock)block.TermBlock).Enabled = true;
-
-            else
-                for (int i = PowerConsumers.Count - 1; i > -1; i--)
-                {
-                    if (((IMyFunctionalBlock)PowerConsumers[i].TermBlock).Enabled)
-                    {
-                        ((IMyFunctionalBlock)PowerConsumers[i].TermBlock).Enabled = false;
-                        break;
-                    }
-
-                }
-        }*/
-
-        #endregion
-
-        #region MOTH-BALLED
-        public void TrashBin(Root root)
-        {
-            root.RemoveMe();
-            if (!(root is block))
-                return;
-
-            block block = (block)root;
-
-            if (block is Inventory)
-                Inventories.Remove((Inventory)block);
-
-            if (block is Resource)
-                Resources.Remove((Resource)block);
-
-            Blocks.Remove(block);
-        }
-        #endregion
-
         #region MAIN REGION
 
         /// USER CONSTANTS ///////////////////////
@@ -161,21 +230,20 @@ namespace IngameScript
 
         const int DefSigCount = 2;
 
-        const int InvSearchCap = 10;
-        const int TallySearchCap = 5;
-        const int BuildCap = 20;
+        const int SEARCH_CAP = 30;
+        const int BUILD_CAP = 20;
 
         static readonly int[] DefScreenRatio = { 25, 17 };
         /// WARNING!! DO NOT GO FURTHER USER!! ///
 
         // LOGIC
-        UpdateFrequency RUN_FREQ = UpdateFrequency.Update10;
+        UpdateFrequency RUN_FREQ = UpdateFrequency.None;
         bool LIT_DEFS = false;
         int ROOT_INDEX = 0;
         RootMeta ROOT;
         IMyTextSurface mySurface;
 
-        public readonly char[] EchoLoop = new char[]
+        static readonly char[] EchoLoop =
         {
             '%',
             '$',
@@ -193,11 +261,12 @@ namespace IngameScript
         int ProdCharBuffer = 0;
         int AuxIndex = 0;
         int EchoCount = 0;
+        int SEARCH_COUNT = 0;
 
-        bool FAIL = false;
-        bool DETECTED = false;
-        bool BUILT = false;
-        bool SETUP = false;
+        //bool FAIL;
+        bool DETECTED;
+        bool BUILT;
+        bool SETUP;
 
         bool bShowProdBuilding = false;
 
@@ -211,18 +280,20 @@ namespace IngameScript
         List<Assembler> Assemblers = new List<Assembler>();
         List<Resource> Resources = new List<Resource>();
         List<Inventory> Inventories = new List<Inventory>();
-        List<TallyProfile> Profiles = new List<TallyProfile>();
+        List<Inventory> Requesters = new List<Inventory>();
+        List<TallyItemType> AllItemTypes = new List<TallyItemType>();
 
         DisplayManager DisplayMan;
         TallyScanner Scanner;
         TallySorter Sorter;
         TallyMatcher Matcher;
         TallyPumper Pumper;
+        InventoryBrowser Browser;
         ProductionManager Producing;
 
-        List<Operation> AllOps;
-        List<Operation> InactiveOps = new List<Operation>();
-        List<Operation> ActiveOps = new List<Operation>();
+        List<Op> AllOps;
+        List<Op> InactiveOps = new List<Op>();
+        List<Op> ActiveOps = new List<Op>();
         public int CurrentOp = -1;
 
         void SetupOps()
@@ -232,15 +303,17 @@ namespace IngameScript
             Sorter = new TallySorter(this);
             Matcher = new TallyMatcher(this);
             Pumper = new TallyPumper(this);
+            Browser = new InventoryBrowser(this);
             Producing = new ProductionManager(this);
 
-            AllOps = new List<Operation>()
+            AllOps = new List<Op>()
             {
                 DisplayMan,
                 Scanner,
                 Sorter,
                 Matcher,
                 Pumper,
+                Browser,
                 Producing,
             };
 
@@ -248,7 +321,6 @@ namespace IngameScript
         }
         void RunOperations()
         {
-
             for (int i = InactiveOps.Count - 1; i > -1; i--)
                 if (InactiveOps[i].Active && InactiveOps[i].HasWork())
                 {
@@ -275,6 +347,13 @@ namespace IngameScript
                 return false;
             CurrentOp = CurrentOp + 1 >= ActiveOps.Count ? 0 : CurrentOp + 1;
             return true;
+        }
+        public bool CallCounter()
+        {
+            SEARCH_COUNT++;
+            bool capped = SEARCH_COUNT >= SEARCH_CAP;
+            SEARCH_COUNT = capped ? 0 : SEARCH_COUNT;
+            return capped;
         }
 
         ///////////////////////
@@ -332,7 +411,14 @@ namespace IngameScript
             ALL,
             REQUEST,
             STORAGE,
+            AVAILABLE,
             LOCKED,
+        }
+        public enum JobType
+        {
+            FIND,
+            WORK,
+            CHAIN
         }
 
         public struct RootMeta
@@ -374,7 +460,7 @@ namespace IngameScript
             {
                 Def = def;
                 AssemblerType = prodIdString;
-                Filter = new Filter(def, target);
+                Filter = new Filter(root, def, target);
                 Root = root;
             }
         }
@@ -391,9 +477,9 @@ namespace IngameScript
             public IMyCubeGrid TargetGrid;
             public IMyBlockGroup TargetGroup;
 
-            public DisplayMeta(RootMeta meta)
+            public DisplayMeta(int sigCount)
             {
-                SigCount = DefSigCount;
+                SigCount = sigCount;
                 TargetName = "No Target";
 
                 Mode = ScreenMode.DEFAULT;
@@ -405,85 +491,101 @@ namespace IngameScript
                 TargetGroup = null;
             }
         }
-
-        public class Operation
+        public struct Job
         {
-            public string Name;
-            public Program Program;
-            public int Priority;
-            public bool Active;
+            public Root Requester;
+            public string Comparison;
+            //public string ItemSubType;
+            public int WIxA;
+            public int WIxB;
+            public JobType Type;
+            public TallyGroup Target;
 
-            public int[] SB = new int[3];
-            public int[] SIx = new int[3];
-            public int[] WIx = new int[3];
-            public int[] SC = new int[3];
-            public int[] WC = new int[3];
-            public int[] WT = new int[3];
-
-            public Operation(Program prog, bool active)
+            public Job(JobType type = JobType.CHAIN, TallyGroup target = TallyGroup.ALL)
             {
-                Program = prog;
-                Active = active;
+                Type = type;
+                Requester = null;
+                Comparison = null;
+                WIxA = 0;
+                WIxB = 0;
+                Target = target;
             }
 
-            public virtual void Toggle()
+            public Job(JobType type, Root requester, int wixA = 0, int wixB = 0)
             {
-                Active = !Active;
+                Type = type;
+                Requester = requester;
+                WIxA = wixA;
+                WIxB = wixB;
+                Comparison = null;
+                Target = TallyGroup.ALL;
             }
-            public virtual bool Run() { return true; }
-            public virtual bool HasWork() { return false; }
-            public virtual void Clear() { }
-            public bool Advance(int index)
+
+            public Job(JobType type, string compare, int wixA = 0, int wixB = 0)
             {
-                SIx[index] += SB[index];
-                bool result = SIx[index] >= SC[index];
-                SIx[index] = result ? 0 : SIx[index];
-                return result;
-            }
-            public bool Reverse(int index)
-            {
-                SIx[index] -= SB[index];
-                bool result = SIx[index] < 0;
-                SIx[index] = result ? SC[index] - 1 : SIx[index];
-                return result;
-            }
-            public bool Next(int index)
-            {
-                WIx[index]++;
-                WT[index]++;
-                bool result = WIx[index] >= WC[index];
-                WIx[index] = result ? 0 : WIx[index];
-                return result;
-            }
-            public void Reset(int index)
-            {
-                SB[index] = 0;
-                SIx[index] = 0;
-                WIx[index] = 0;
-                SC[index] = 0;
-                WC[index] = 0;
-                WT[index] = 0;
+                Type = type;
+                Requester = null;
+                WIxA = wixA;
+                WIxB = wixB;
+                Comparison = compare;
+                Target = TallyGroup.ALL;
             }
         }
-        public class TallySlot
+
+        public class Root
         {
+            public string Signature;
+            public int RootID;
             public Program Program;
-            public Inventory Inventory;
-            public TallyProfile Profile;
-            public TallySlot InLink, OutLink;
-
-            public MyInventoryItem OLD, NEW;
-            public MyFixedPoint MyTarget, InTarget, OutTarget;
-
-            public bool ProfileQueued, LinkQueued, Linked, DEAD;
-            public int IN, OUT, Index;
-
-            public TallySlot(MyInventoryItem first, Inventory inventory, int index)
+            public Root(RootMeta meta)
             {
-                NEW = first;
+                Signature = meta.Signature;
+                Program = meta.Program;
+                RootID = Program.RequestIndex();
+            }
+            public virtual void Setup()
+            {
+                Program.Echo("Root Setup");
+            }
+            public virtual void RemoveMe()
+            {
+
+            }
+            public void Dlog(string nextLine)
+            {
+                Program.Debug.Append($"{nextLine}\n");
+            }
+        }
+        public class Slot : Root
+        {
+            public Inventory Inventory;
+            public TallyItemSub Profile;
+            public Slot
+                InLink,
+                OutLink;
+
+            public MyInventoryItem
+                OLD,
+                NEW;
+            public MyFixedPoint
+                MyTarget,
+                InTarget,
+                OutTarget;
+
+            public bool
+                ProfileQueued,
+                LinkQueued,
+                DEAD;
+            public int
+                IN,
+                OUT,
+                Index;
+
+            public Slot(RootMeta meta, Inventory inventory, int index) : base(meta)
+            {
+                NEW = inventory.Buffer[index];
                 OLD = NEW;
                 Inventory = inventory;
-                Program = Inventory.Program;
                 Index = index;
                 TallyFilter(this);
             }
@@ -501,7 +603,7 @@ namespace IngameScript
                     {
                         Profile.Update(NEW.Amount - OLD.Amount);
                         return true;
-                    }  
+                    }
                 }
                 return false;
             }
@@ -524,37 +626,57 @@ namespace IngameScript
             public bool Pump()
             {
                 if (Inventory == null)
-                    //|| OccupiedSlots.Count < 0)
                     return false;
 
                 bool workComplete = true;
 
                 if (IN == 1)
                 {
+                    if (InLink.DEAD)
+                    {
+                        InLink = null;
+                        Dlog("In Link Dead!");
+                    }
+
                     if (InLink == null)
                     {
+                        Dlog("No In Link!");
                         workComplete = false;
                     }
-                    else if (!Transfer(Program.Debug, InLink, this, InTarget))
+                    else if (!TallyTransfer(InLink, this, InTarget))
                     {
+                        Dlog("In Transfer Failed!");
                         workComplete = false;
                     }
+                    else
+                        Dlog("In Transfer Success!");
                 }
 
 
                 else if (OUT == 1)
                 {
+                    if (OutLink.DEAD)
+                    {
+                        OutLink = null;
+                        Dlog("Out Link Dead!");
+                    }
+
                     if (OutLink == null)
                     {
+                        Dlog("No Out Link!");
                         workComplete = false;
                     }
 
-                    else if (!Transfer(Program.Debug, this, OutLink, OutTarget))
+                    else if (!TallyTransfer(this, OutLink, OutTarget))
                     {
+                        Dlog("Out Transfer Failed!");
                         workComplete = false;
                     }
+                    else
+                        Dlog("Out Transfer Success!");
                 }
 
+                Dlog($"Work Completed: {workComplete}");
                 return workComplete;
             }
             public bool CheckUnLinked()
@@ -567,7 +689,7 @@ namespace IngameScript
 
                 return false;
             }
-            public void SyncTallyToProfile(TallyProfile profile)
+            public void SyncTallyToProfile(TallyItemSub profile)
             {
                 if (profile == null)
                     return;
@@ -582,6 +704,8 @@ namespace IngameScript
                     Profile.Tallies[(int)TallyGroup.STORAGE].Add(this);
                 if (IN == 1 || OUT == 1)
                     Profile.Tallies[(int)TallyGroup.REQUEST].Add(this);
+                if (OUT > -1)
+                    Profile.Tallies[(int)TallyGroup.AVAILABLE].Add(this);
             }
             private void UnsyncFromProfile()
             {
@@ -596,6 +720,8 @@ namespace IngameScript
                     Profile.Tallies[(int)TallyGroup.STORAGE].Remove(this);
                 if (IN == 1 || OUT == 1)
                     Profile.Tallies[(int)TallyGroup.REQUEST].Remove(this);
+                if (OUT > -1)
+                    Profile.Tallies[(int)TallyGroup.AVAILABLE].Remove(this);
 
                 Profile = null;
             }
@@ -606,419 +732,36 @@ namespace IngameScript
                 UnsyncFromProfile();
                 Inventory.Slots.Remove(this);
                 Inventory = null;
-                DEAD = true;
+                DEAD = true; // for links
             }
         }
-        public class Filter
+        public class Filter : Root
         {
             public string[] ItemID = new string[2];
             public MyFixedPoint Target;
             public int IN;
             public int OUT;
 
-            Filter(MyFixedPoint target, int @in, int @out)
+            Filter(RootMeta meta, MyFixedPoint target, int @in, int @out) : base(meta)
             {
                 Target = target;
                 IN = @in; // Prioritize In
                 OUT = @out;
             }
-            public Filter(string combo, MyFixedPoint target, int IN = 0, int OUT = 0) : this(target, IN, OUT)
+            public Filter(RootMeta meta, string combo, MyFixedPoint target, int IN = 0, int OUT = 0) : this(meta, target, IN, OUT)
             {
                 GenerateFilters(combo, ref ItemID);
             }
-            public Filter(MyItemType type, MyFixedPoint target, int IN = 0, int OUT = 0) : this(target, IN, OUT)
+            public Filter(RootMeta meta, MyItemType type, MyFixedPoint target, int IN = 0, int OUT = 0) : this(meta, target, IN, OUT)
             {
                 GenerateFilters(type, ref ItemID);
             }
-            public Filter(MyDefinitionId id, MyFixedPoint target, int IN = 0, int OUT = 0) : this(target, IN, OUT)
+            public Filter(RootMeta meta, MyDefinitionId id, MyFixedPoint target, int IN = 0, int OUT = 0) : this(meta, target, IN, OUT)
             {
                 GenerateFilters(id, ref ItemID);
             }
         }
-        public class Root
-        {
-            public string Signature;
-            public int RootID;
-            public Program Program;
-            public StringBuilder Debug;
-            public Root(RootMeta meta)
-            {
-                Signature = meta.Signature;
-                Program = meta.Program;
-                Debug = Program.Debug;
-                RootID = Program.RequestIndex();
-            }
-            public virtual void Setup()
-            {
-                Program.Echo("Root Setup");
-            }
-            public virtual void RemoveMe()
-            {
-
-            }
-        }
-
-        public class DisplayManager : Operation
-        {
-            public DisplayManager(Program prog, bool active = true) : base(prog, active)
-            {
-                Name = "DISPLAY";
-            }
-
-            public override bool HasWork()
-            {
-                WC[0] = Program.Displays.Count;
-                return WC[0] > 0;
-            }
-
-            public override bool Run()
-            {
-                if (Program.Displays[WIx[0]].Update())
-                    Next(0);
-
-                Program.Debugging();
-
-                return true;
-            }
-        }
-        public class TallyScanner : Operation
-        {
-            public TallyScanner(Program prog, bool active = true) : base(prog, active)
-            {
-                Name = "SCAN";
-                SB[0] = TallySearchCap;
-            }
-
-            public override bool HasWork()
-            {
-                WC[0] = Program.Inventories.Count;
-                return WC[0] > 0;
-            }
-            public override bool Run()
-            {
-                Inventory working = Program.Inventories[WIx[0]];
-
-                working.SnapShot();
-                SC[0] = working.Slots.Count > working.Buffer.Count ? working.Slots.Count : working.Buffer.Count;
-
-                if (working.Tally(SIx[0], SB[0]))
-                {
-                    SIx[0] = 0;
-                    Next(0);
-                    return true;
-                }
-
-                if (Advance(0))
-                    Next(0);
-
-                return true;
-            }
-        }
-        public class InventoryBrowser : Operation
-        {
-            public InventoryBrowser(Program prog, bool active) : base(prog, active)
-            {
-                Name = "BROWSE";
-                SB[0] = InvSearchCap;
-            }
-
-            public override bool HasWork()
-            {
-                WC[0] = Program.Inventories.Count;
-                return WC[0] > 0;
-            }
-
-            public override bool Run()
-            {
-                return true;
-            }
-
-            void FindItem()
-            {
-
-            }
-        }
-        public class TallySorter : Operation
-        {
-            public List<TallySlot> TallyQueue = new List<TallySlot>();
-
-            public TallySorter(Program prog, bool active = true) : base(prog, active)
-            {
-                Name = "TALLY";
-                SB[0] = TallySearchCap;
-            }
-
-            public override bool HasWork()
-            {
-                WC[0] = TallyQueue.Count;
-                return WC[0] > 0;
-            }
-
-            public override bool Run()
-            {
-                if (ProcessInbound())
-                {
-                    SIx[0] = 0;
-                    TallyQueue[0].ProfileQueued = false;
-                    TallyQueue.RemoveAt(0);
-                }
-                return true;
-            }
-
-            bool ProcessInbound()
-            {
-                SC[0] = Program.Profiles.Count;
-                for (int i = SIx[0]; i < SIx[0] + SB[0]; i++)
-                {
-                    if (i >= SC[0])
-                    {
-                        break;
-                    }
-
-                    if (Program.Profiles[i].Type == TallyQueue[0].NEW.Type)
-                    {
-                        Program.Profiles[i].Append(TallyQueue[0]);
-                        SIx[0] = 0;
-                        return true;
-                    }
-                }
-
-                if (!Advance(0))
-                    return false;
-
-                TallyProfile newProf = new TallyProfile(Program.ROOT, TallyQueue[0]);
-                Program.Profiles.Add(newProf);
-                return true;
-            }
-        }
-        public class TallyMatcher : Operation
-        {
-            public List<TallySlot> Queue = new List<TallySlot>();
-
-            bool request = true;
-            bool storage = true;
-            bool inventory = true;
-
-            public TallyMatcher(Program prog, bool active = true) : base(prog, active)
-            {
-                Name = "MATCH";
-                WIx[0] = 0;
-                SB[0] = TallySearchCap; // Tally
-                SB[1] = InvSearchCap; // Inventory
-            }
-
-            public override bool HasWork()
-            {
-                WC[0] = Queue.Count;
-                return Queue.Count > 0;
-            }
-            public override bool Run()
-            {
-                if (ProcessQueue())
-                {
-                    request = true;
-                    storage = true;
-                    inventory = true;
-                    Queue[0].LinkQueued = false;
-                    Queue.RemoveAt(0);
-                }
-
-                return true;
-            }
-
-            public string CurrentPhase()
-            {
-                if (request)
-                    return "REQUEST";
-                if (storage)
-                    return "STORAGE";
-                return "INVENTORY";
-            }
-            bool ProcessQueue()
-            {
-                if (Queue[0] == null ||
-                    Queue[0].DEAD)
-                    return true;
-
-                if (!Queue[0].CheckUnLinked())
-                    return true;
-
-                if (request)
-                    return TallyLink(TallyGroup.REQUEST, out request);
-                
-                if (storage)
-                    return TallyLink(TallyGroup.STORAGE, out storage);
-                
-                if (inventory)
-                    return DumpUnwanted();
-
-                return true;
-            }
-            bool TallyLink(TallyGroup group, out bool state)
-            {
-                TallySlot queued = Queue[0];
-                List<TallySlot> targetList = queued.Profile.Tallies[(int)group];
-                SC[0] = targetList.Count;
-
-                for (int i = SIx[0]; i < (SIx[0] + SB[0]); i++)
-                {
-                    if (i >= targetList.Count)
-                    {
-                        state = false;
-                        SIx[0] = 0;
-                        return false;
-                    }
-
-                    if (targetList[i] == queued ||
-                        targetList[i].Inventory == queued.Inventory)
-                        continue;
-
-                    if (queued.IN == 1 &&
-                        queued.InLink == null &&
-                        targetList[i].OUT > -1 &&
-                        (targetList[i].Inventory.Profile.RESIDE ||
-                            !targetList[i].Inventory.IsEmpty()))
-                    {
-                        queued.InTarget = MaximumReturn(targetList[i].MyTarget, queued.MyTarget);
-                        queued.InLink = targetList[i];
-                    }
-
-                    if (queued.OUT == 1 &&
-                        queued.InLink == null &&
-                        targetList[i].IN > -1 &&
-                        (targetList[i].Inventory.Profile.RESIDE ||
-                            !targetList[i].Inventory.IsFull()))
-                    {
-                        queued.OutTarget = MaximumReturn(queued.MyTarget, targetList[i].MyTarget);
-                        queued.OutLink = targetList[i];
-                    }
-
-                    if (!queued.CheckUnLinked())
-                    {
-                        state = true;
-                        return true;
-                    }
-                }
-
-                state = !Advance(0); // Nothing more to look for in state
-                return false;
-            }
-            bool DumpUnwanted()
-            {
-                TallySlot queued = Queue[0];
-                SC[1] = Program.Inventories.Count;
-                SIx[1] = SIx[1] < SC[1] ? SIx[1] : SC[1] - 1;
-
-                Program.Debug.Append($"Dumping: {SIx[1]}:{SC[1]}\n");
-
-                for (int i = SIx[1]; i > SIx[1] - SB[1]; i--)
-                {
-                    Program.Debug.Append($"Dumping: {i}\n");
-                    if (i < 0)
-                    {
-                        SIx[1] = SC[1] - 1;
-                        return true;
-                    }
-
-                    if (queued.Inventory == Program.Inventories[i]) // Skip own inventory
-                        continue;
-
-                    Inventory inventory = Program.Inventories[i];
-                    MyFixedPoint target = 0;
-
-                    Program.Debug.Append($"Candidate: {inventory.CustomName}\n" +
-                        $"queued.OUT: {queued.OUT}\n");
-
-                    if (queued.OUT == 1 &&
-                        queued.Inventory.EmptyCheck() &&
-                        ProfileCompare(inventory.Profile, queued.NEW.Type, out target) &&
-                        ForceTransfer(inventory, queued.Inventory, queued.NEW,
-                        AllowableReturn(target, queued.MyTarget, queued)))
-                    {
-                        SIx[1] = SC[1] - 1;
-                        return true;
-                    }
-                }
-
-                Program.Debug.Append($"H'WUT?\n");
-
-                if (Reverse(1))
-                    return true; // found nothing
-
-                return false;
-            }
-            bool ForceTransfer(Inventory target, Inventory source, MyInventoryItem item, MyFixedPoint amount)
-            {
-
-                if (amount != 0)
-                    return PullInventory(target).TransferItemFrom(PullInventory(source, false), item, amount);
-                return PullInventory(target).TransferItemFrom(PullInventory(source, false), item);
-            }
-        }
-        public class TallyPumper : Operation
-        {
-            public TallyPumper(Program prog, bool active = true) : base(prog, active)
-            {
-                Name = "PUMP";
-                SB[0] = TallySearchCap;
-            }
-
-            public override bool HasWork()
-            {
-                WC[0] = Program.Profiles.Count;
-                return Program.Profiles.Count > 0;
-            }
-
-            public override bool Run()
-            {
-                if (Pumping())
-                    Next(0);
-
-                return true;
-            }
-
-            bool Pumping()
-            {
-                List<TallySlot> tallyList = Program.Profiles[WIx[0]].Tallies[(int)TallyGroup.REQUEST];
-                SC[0] = tallyList.Count;
-
-                for (int i = SIx[0]; i < SIx[0] + SB[0]; i++)
-                {
-                    if (i >= SC[0])
-                    {
-                        return true;
-                    }
-
-                    if (tallyList[i].CheckUnLinked())
-                    {
-                        if (!tallyList[i].LinkQueued)
-                        {
-                            Program.Matcher.Queue.Add(tallyList[i]);
-                            tallyList[i].LinkQueued = true;
-                        }
-                    }
-
-                    tallyList[i].Pump();
-                }
-                return Advance(0);
-            }
-        }
-        public class ProductionManager : Operation
-        {
-            List<Production> Productions;
-            List<TallyProfile> Profiles;
-            List<Assembler> Assemblers;
-
-            public ProductionManager(Program prog, bool active = true) : base(prog, active)
-            {
-                Name = "PROD";
-                Productions = prog.Productions;
-                Profiles = prog.Profiles;
-                Assemblers = prog.Assemblers;
-            }
-        }
-
-        public class FilterProfile
+        public class FilterProfile : Root
         {
             public List<Filter> Filters;
 
@@ -1030,7 +773,7 @@ namespace IngameScript
             public bool CLEAN;
             public bool AUTO_REFINE;
 
-            public FilterProfile(bool defIn = true, bool defOut = true, bool defFill = false, bool defEmpty = false)
+            public FilterProfile(RootMeta meta, bool defIn = true, bool defOut = true, bool defFill = false, bool defEmpty = false) : base(meta)
             {
                 Filters = new List<Filter>();
                 DEFAULT_OUT = defOut;
@@ -1131,28 +874,41 @@ namespace IngameScript
 
                 if (itemID != "null")
                 {
-                    Filters.Add(new Filter(itemID, target, bIn ? FILL ? 1 : 0 : -1, bOut ? EMPTY ? 1 : 0 : -1));
+                    Filters.Add(new Filter(Program.ROOT, itemID, target, bIn ? FILL ? 1 : 0 : -1, bOut ? EMPTY ? 1 : 0 : -1));
                 }
 
             }
         }
-        public class TallyProfile : Root
+        public class TallyItemType : Root
+        {
+            public List<TallyItemSub> SubTypes = new List<TallyItemSub>();
+            public string TypeId;
+
+            public TallyItemType(RootMeta meta, TallyItemSub first) : base(meta)
+            {
+                SubTypes.Add(first);
+                TypeId = first.Type.TypeId;
+                Dlog("New TallyItemType!");
+            }
+        }
+        public class TallyItemSub : Root
         {
             public MyFixedPoint CurrentTotal;
             public MyFixedPoint HighestReached;
             public MyItemType Type;
 
-            public List<TallySlot>[] Tallies = new List<TallySlot>[Enum.GetNames(typeof(TallyGroup)).Length];
-            public TallyProfile(RootMeta meta, TallySlot first) : base(meta)
+            public List<Slot>[] Tallies = new List<Slot>[Enum.GetNames(typeof(TallyGroup)).Length];
+            public TallyItemSub(RootMeta meta, Slot first) : base(meta)
             {
                 for (int i = 0; i < Tallies.Length; i++)
-                    Tallies[i] = new List<TallySlot>();
+                    Tallies[i] = new List<Slot>();
 
                 if (first == null)
                     return;
 
                 Type = first.NEW.Type;
                 Append(first);
+                Dlog("New TallyItemSub!");
             }
 
             public void Update(MyFixedPoint change)
@@ -1161,7 +917,7 @@ namespace IngameScript
                 CurrentTotal = CurrentTotal > 0 ? CurrentTotal : 0;
                 HighestReached = CurrentTotal > HighestReached ? CurrentTotal : HighestReached;
             }
-            public void Append(TallySlot newTally)
+            public void Append(Slot newTally)
             {
                 newTally.SyncTallyToProfile(this);
                 Update(newTally.NEW.Amount);
@@ -1253,6 +1009,805 @@ namespace IngameScript
             }
         }
 
+        public class Work : Root
+        {
+            public Op MyOp;
+            public Work Chain;
+            public Job ChainJob;
+            public string Name;
+            //public bool ACTIVE;
+            public bool FIND;
+            public bool WAIT;
+            public int SIx = 0;
+            public int SearchCount = 0;
+
+            public Work(RootMeta meta, Op op) : base(meta)
+            {
+                MyOp = op;
+                //ACTIVE = true;
+            }
+            public virtual int WorkLoad(Job job)
+            {
+                return 0; // Load complete
+            }
+            public virtual bool DoWork()
+            {
+                return false; // Task/Search Proced
+            }
+            public virtual bool Compare()
+            {
+                return false;
+            }
+            public virtual int ChainCall()
+            {
+                return Chain == null ? 0 : 1; // Break work operation
+            }
+            int Peek(int i)
+            {
+                Dlog("Peeking...");
+                if (CheckOp(i))
+                    return -1;
+
+                if (FIND)
+                {
+                    Dlog("Searching...");
+                    if (Compare())
+                    {
+                        Dlog("Found!");
+                        if (Chain != null)
+                        {
+                            Dlog("ChainCall!");
+                            return ChainCall() + 1;
+                        }
+                        else
+                            return 1;
+                    }
+                    return 0;
+                }
+                else
+                {
+                    Dlog("Working...");
+                    if (Chain != null)
+                    {
+                        Dlog("ChainCall!");
+                        return ChainCall();
+                    }
+                    Dlog("Doing work...");
+                    return DoWork() ? 1 : 0;
+                }
+            }
+            bool CheckOp(int i)
+            {
+                bool maxed = Program.CallCounter();
+                Dlog($"Calls Maxed: {maxed}");
+                if (maxed)
+                {
+                    SIx = i;
+                    return true;
+                }
+                return false;
+            }
+
+            public int IterateScopeForward()
+            {
+                int result = 0;
+                for (int i = SIx; i < SearchCount; i++)
+                {
+                    Dlog($"Searching:{i}/{SearchCount}");
+                    SIx = i;
+                    result = Peek(i);
+
+                    if (result == -1) // Operation call max
+                    {
+                        Dlog("Call cap reached!");
+                        return -1;
+                    }
+
+                    if (FIND && result > 0) // Found something early
+                    {
+                        Dlog("Broke search early!");
+                        break;
+                    }
+                }
+                Dlog($"Search Result:{result == 1}");
+                SIx = WAIT ? SIx : 0;
+                //ACTIVE = !WAIT;
+                return result; // Found nothing/something
+            }
+            public int IterateScopeReverse()
+            {
+                int result;
+                SIx = SIx < SearchCount ? SIx : SearchCount - 1;
+                for (int i = SIx; i > -1; i--)
+                {
+                    result = Peek(i);
+
+                    if (result == -1) // Operation call max
+                        return -1;
+
+                    if (FIND && result == 1) // Found something early
+                    {
+                        SIx = 0;
+                        return 1;
+                    }
+                }
+
+                SIx = 0;
+                return 0;
+            }
+        }
+        public class FindTypeJob : Work
+        {
+            string TypeId;
+            public FindTypeJob(RootMeta meta, Op op) : base(meta, op)
+            {
+                Name = "TYPE_SEARCH";
+            }
+            public override int WorkLoad(Job job)
+            {
+                Dlog($"Performing: {Name}");
+
+                if (job.Requester is Slot)
+                {
+                    if (Chain != null)
+                    {
+                        Dlog("ChainJob updated!");
+                        ChainJob.Requester = job.Requester;
+                    }
+                        
+                    Dlog($"Slot Request: {((Slot)job.Requester).NEW.Type.TypeId}");
+                    TypeId = ((Slot)job.Requester).NEW.Type.TypeId;
+                }
+                    
+                else if (job.Comparison != null)
+                    TypeId = job.Comparison;
+
+                else
+                    TypeId = "any";
+
+                SearchCount = Program.AllItemTypes.Count;
+                return IterateScopeForward();
+            }
+            public override bool Compare()
+            {
+                Dlog($"Comparing type: {TypeId} || {Program.AllItemTypes[SIx].TypeId}");
+                return TypeId == "any" || Program.AllItemTypes[SIx].TypeId == TypeId;
+            }
+            public override bool DoWork()
+            {
+                return true; // ?
+            }
+            public override int ChainCall()
+            {
+                if (0 == base.ChainCall())
+                {
+                    Dlog("No Chain present!");
+                    return 0;
+                }
+                    
+                ChainJob.WIxA = SIx;
+                MyOp.CurrentWork = Chain;
+                return Chain.WorkLoad(ChainJob);
+            }
+        }
+        public class FindSubJob : Work
+        {
+            public int TIx;
+            string SubId;
+            public FindSubJob(RootMeta meta, Op op) : base(meta, op)
+            {
+                Name = "SUB_SEARCH";
+            }
+            public override int WorkLoad(Job job)
+            {
+                Dlog($"Performing: {Name}");
+
+                TIx = job.WIxA;
+
+                if (job.Requester is Slot)
+                {
+                    if (Chain != null)
+                        ChainJob.Requester = job.Requester;
+                    SubId = ((Slot)job.Requester).NEW.Type.SubtypeId;
+                }
+                    
+                else if (job.Comparison != null)
+                    SubId = job.Comparison;
+                else
+                    SubId = "any";
+
+                if (job.Requester is TallyItemType)
+                    SearchCount = ((TallyItemType)job.Requester).SubTypes.Count;
+                else
+                    SearchCount = Program.AllItemTypes[TIx].SubTypes.Count;
+
+                return IterateScopeForward();
+            }
+            public override bool Compare()
+            {
+                Dlog($"Comparing sub: {SubId} || {Program.AllItemTypes[TIx].SubTypes[SIx].Type.SubtypeId}");
+                return SubId == "any" || Program.AllItemTypes[TIx].SubTypes[SIx].Type.SubtypeId == SubId;
+            }
+            public override bool DoWork()
+            {
+                return true; // ?
+            }
+            public override int ChainCall()
+            {
+                if (1 == base.ChainCall())
+                    return 1;
+
+                ChainJob.WIxA = TIx;
+                ChainJob.WIxB = SIx;
+                return Chain.WorkLoad(ChainJob);
+            }
+        }
+        public class FindSlotJob : Work
+        {
+            public int TIx;
+            public int sIx;
+            public List<Slot> Target;
+            public FindSlotJob(RootMeta meta, Op op) : base(meta, op)
+            {
+                Name = "SLOT_SEARCH";
+            }
+
+            public override int WorkLoad(Job job)
+            {
+                TIx = job.WIxA;
+                sIx = job.WIxB;
+
+                if (job.Requester == null ||
+                    job.Requester is Slot)
+                    Target = Program.AllItemTypes[TIx].SubTypes[sIx].Tallies[(int)job.Target];
+                else if (job.Requester is Inventory)
+                    Target = ((Inventory)job.Requester).Slots;
+                else
+                    Target = null;
+
+                SearchCount = Target == null ? 0 : Target.Count;
+                return IterateScopeForward();
+            }
+            public override bool Compare()
+            {
+                return false;
+            }
+            public override bool DoWork()
+            {
+                if (Target == null)
+                    return true;
+
+                if (Target[SIx].CheckUnLinked())
+                {
+                    if (!Target[SIx].LinkQueued)
+                    {
+                        Dlog("Adding match queue...");
+                        Program.Matcher.Queue.Add(Target[SIx]);
+                        Target[SIx].LinkQueued = true;
+                    }
+                }
+
+                return Target[SIx].Pump();
+            }
+            /*public override bool ChainCall()
+            {
+                if (!base.ChainCall())
+                    return false;
+
+                return Chain.WorkLoad(ChainJob) != -1;
+            }*/
+        }
+        public class ScanSlotJob : Work
+        {
+            Inventory Scanning;
+            public ScanSlotJob(RootMeta meta, Op op) : base(meta, op)
+            {
+                Name = "SCAN_PROGRESS";
+                FIND = false;
+            }
+
+            public override int WorkLoad(Job job)
+            {
+                if (!(job.Requester is Inventory))
+                    return 0;
+
+                Scanning = (Inventory)job.Requester;
+                Scanning.SnapShot();
+                SearchCount = Scanning.Slots.Count > Scanning.Buffer.Count ? Scanning.Slots.Count : Scanning.Buffer.Count;
+
+                Dlog($"Scanning: {Scanning.CustomName} [{SIx}/{SearchCount}]");
+
+                int state = IterateScopeForward();
+                if (state == 0)
+                {
+                    Dlog("Done Scanning");
+                    SIx = 0;
+                    Scanning.Buffer.Clear();
+                }
+                return state;
+            }
+
+            public override bool DoWork()
+            {
+                if (SIx >= Scanning.Slots.Count) // Not enough slots
+                {
+                    Dlog("Adding slot");
+                    Scanning.Slots.Add(new Slot(Program.ROOT, Scanning, SIx));
+                }
+
+                if (SIx >= Scanning.Buffer.Count) // Too many slots
+                {
+                    Dlog("Killing slot");
+                    Scanning.Slots[Scanning.Slots.Count - 1].Kill();
+                }
+
+                else
+                {
+                    Dlog("Updating slot");
+                    Scanning.Slots[SIx].Update(Scanning.Buffer[SIx]);
+                }
+
+                return SIx + 1 < SearchCount; // work to end of list
+            }
+        }
+        public class PullSlotJob : Work//<Slot>
+        {
+            public Inventory InBound;
+            public Inventory OutBound;
+            public TallyItemSub SubGroup;
+            public MyFixedPoint TargetBuffer;
+            public PullSlotJob(RootMeta meta, Op op) : base(meta, op)
+            {
+                Name = "FORCE_PULL";
+            }
+            public override int WorkLoad(Job job)
+            {
+                if (!(job.Requester is Inventory))
+                    return 0;
+
+                InBound = (Inventory)job.Requester;
+                OutBound = Program.Inventories[job.WIxA];
+
+                return IterateScopeForward();
+            }
+            public override bool DoWork()
+            {
+                return ProfileCompare(InBound.Profile, OutBound.Slots[SIx], out TargetBuffer, false);
+            }
+        }
+
+        public class Op : Root
+        {
+            public string Name;
+            public bool Active;
+            public Work CurrentWork;
+
+            public int
+                WorkIndex,
+                WorkCount,
+                WorkTotal;
+
+            public Op(Program prog, bool active) : base(prog.ROOT)
+            {
+                Active = active;
+            }
+
+            public virtual void Toggle()
+            {
+                Active = !Active;
+            }
+            public virtual bool Run() { Program.Debug.Append($"Running:{Name}\n"); return true; }
+            public virtual bool HasWork() { return false; }
+            public virtual void Clear() { }
+            public bool Next()
+            {
+                WorkIndex++;
+                WorkTotal++;
+                bool result = WorkIndex >= WorkCount;
+                WorkIndex = result ? 0 : WorkIndex;
+                return result;
+            }
+            public void Reset(int index)
+            {
+                WorkIndex = 0;
+                WorkCount = 0;
+                WorkTotal = 0;
+            }
+
+
+            // -1 = Search Capped, 0 = Scope Searched, 1 = Task Complete 
+
+
+        }
+        public class DisplayManager : Op
+        {
+            public DisplayManager(Program prog, bool active = true) : base(prog, active)
+            {
+                Name = "DISPLAY";
+            }
+
+            public override bool HasWork()
+            {
+                WorkCount = Program.Displays.Count;
+                return WorkCount > 0;
+            }
+
+            public override bool Run()
+            {
+                base.Run();
+                if (Program.Displays[WorkIndex].Update())
+                    Next();
+
+                return true;
+            }
+        }
+        public class TallyScanner : Op
+        {
+            public ScanSlotJob TallyScope;
+            public TallyScanner(Program prog, bool active = true) : base(prog, active)
+            {
+                TallyScope = new ScanSlotJob(prog.ROOT, this);
+                CurrentWork = TallyScope;
+                Name = "SCAN";
+            }
+
+            public override bool HasWork()
+            {
+                WorkCount = Program.Inventories.Count;
+                return WorkCount > 0;
+            }
+            public override bool Run()
+            {
+                base.Run();
+
+                if (0 == TallyScope.WorkLoad(new Job(JobType.WORK, Program.Inventories[WorkIndex])))
+                    Next();
+
+                return true;
+            }
+        }
+        public class TallySorter : Op
+        {
+            public List<Slot> TallyQueue = new List<Slot>();
+            public FindTypeJob TypeMatch;
+            public FindSubJob SubMatch;
+            public TallySorter(Program prog, bool active = true) : base(prog, active)
+            {
+                TypeMatch = new FindTypeJob(prog.ROOT, this);
+                TypeMatch.FIND = true; TypeMatch.WAIT = true;
+
+                SubMatch = new FindSubJob(prog.ROOT, this);
+                SubMatch.FIND = true;
+
+                TypeMatch.Chain = SubMatch;
+                TypeMatch.ChainJob.Type = JobType.FIND;
+                TypeMatch.ChainJob.Target = TallyGroup.ALL;
+
+                Name = "TALLY";
+                WorkIndex = 0;
+            }
+
+            public override bool HasWork()
+            {
+                WorkCount = TallyQueue.Count;
+                return WorkCount > 0;
+            }
+
+            public override bool Run()
+            {
+                base.Run();
+                Dlog($"Sorts Remaining: {WorkCount}");
+
+                Dlog($"h'wut the hell:\n" +
+                    $"TypeJerb: {TypeMatch != null}\n" +
+                    $"SubJerb: {SubMatch != null}\n" +
+                    $"TypeJerbChain: {TypeMatch.Chain != null}");
+
+                if (ProcessInbound())
+                {
+                    TypeMatch.SIx = 0;
+                    SubMatch.SIx = 0;
+                    TallyQueue[0].ProfileQueued = false;
+                    TallyQueue.RemoveAt(0);
+                }
+
+                return true;
+            }
+            bool ProcessInbound()
+            {
+                Dlog($"Processing top of sort queue: {TallyQueue[0].NEW.Type}");
+                CurrentWork = TypeMatch;
+                TallyItemSub newProf;
+                switch (TypeMatch.WorkLoad(new Job(JobType.FIND, TallyQueue[0])))
+                {
+                    case -1:
+                        Dlog("CORE-TEMP-CRITICAL!");
+                        return false;
+
+                    case 0:
+                        Dlog("Un-Matched!\nNew Type/Sub/Slot");
+                        newProf = new TallyItemSub(Program.ROOT, TallyQueue[0]);
+                        TallyItemType newType = new TallyItemType(Program.ROOT, newProf);
+                        Program.AllItemTypes.Add(newType);
+                        return true;
+
+                    case 1:
+                        Dlog("Type Matched!\nNew Sub/Slot");
+                        newProf = new TallyItemSub(Program.ROOT, TallyQueue[0]);
+                        Program.AllItemTypes[TypeMatch.SIx].SubTypes.Add(newProf);
+                        return true;
+
+                    case 2:
+                        Dlog("Sub Type Matched!\nNew Slot");
+                        Program.AllItemTypes[TypeMatch.SIx].SubTypes[SubMatch.SIx].Append(TallyQueue[0]);
+                        return true;
+                }
+
+                Dlog("How Sam? Clearing Que >:| ");
+                return true;
+            }
+        }
+        public class TallyMatcher : Op
+        {
+            public List<Slot> Queue = new List<Slot>();
+
+            public TallyMatcher(Program prog, bool active = true) : base(prog, active)
+            {
+                Name = "MATCH";
+                WorkIndex = 0;
+            }
+
+            public override bool HasWork()
+            {
+                WorkCount = Queue.Count;
+                return WorkCount > 0;
+            }
+            public override bool Run()
+            {
+                base.Run();
+                if (ProcessQueue())
+                {
+                    Queue[0].LinkQueued = false;
+                    Queue.RemoveAt(0);
+                }
+
+                return true;
+            }
+
+            bool ProcessQueue()
+            {
+                if (Queue[0] == null)
+                {
+                    Dlog("null!");
+                    return true;
+                }
+
+                try
+                {
+                    Dlog($"Processing TallySlot: {Queue[0].NEW.Type}\n" +
+                    $"Source: {Queue[0].Inventory.CustomName} [{Queue[0].Index}]");
+                }
+                catch { }
+
+                if (Queue[0].DEAD)
+                {
+                    Dlog("Dead!");
+                    return true;
+                }
+
+                if (!Queue[0].CheckUnLinked())
+                {
+                    Dlog("Not unlinked! gtfo!");
+                    return true;
+                }
+
+                //if (request)
+                //return TallyLink(TallyGroup.REQUEST, out request);
+
+                //if (storage)
+                //return TallyLink(TallyGroup.STORAGE, out storage);
+
+                //if (inventory)
+                //return DumpUnwanted();
+
+                return true;
+            }
+            /*bool TallyLink(TallyGroup group, out bool state)
+            {
+                Slot queued = Queue[0];
+                List<Slot> targetList = queued.Profile.Tallies[(int)group];
+                SearchCount[0] = targetList.Count;
+
+                Dlog(
+                    $"Queued Tally for linking: {Queue[0].NEW.Type.SubtypeId}\n" +
+                    $"Linking tally with: {group} [{SearchCount[0]}]");
+
+                for (int i = SearchIndex[0]; i < SearchIndex[0] + SR[0] && i < SearchCount[0]; i++)
+                {
+                    Dlog($"Comparing to Tally: {targetList[i].NEW.Type.SubtypeId} [{i}]");
+
+                    if (!CheckTallyLink(queued, targetList[i]))
+                        continue;
+
+                    if (queued.IN == 1 &&
+                        queued.InLink == null &&
+                        targetList[i].OUT > -1 &&
+                        (targetList[i].Inventory.Profile.RESIDE ||
+                            !targetList[i].Inventory.IsEmpty()))
+                    {
+                        Dlog($"In Link Made!");
+
+                        queued.InTarget = MaximumReturn(targetList[i].MyTarget, queued.MyTarget);
+                        queued.InLink = targetList[i];
+                    }
+
+                    if (queued.OUT == 1 &&
+                        queued.InLink == null &&
+                        targetList[i].IN > -1 &&
+                        (targetList[i].Inventory.Profile.RESIDE ||
+                            !targetList[i].Inventory.IsFull()))
+                    {
+                        Dlog($"Out Link Made!");
+
+                        queued.OutTarget = MaximumReturn(queued.MyTarget, targetList[i].MyTarget);
+                        queued.OutLink = targetList[i];
+                    }
+
+                    if (!queued.CheckUnLinked())
+                    {
+                        state = true;
+                        return true;
+                    }
+                }
+
+                state = !Advance(0); // Nothing more to look for in state
+                return false;        // continue searching else where
+            }
+            bool DumpUnwanted()
+            {
+                Dlog("Dumping...");
+
+                Slot queued = Queue[0];
+                SearchCount[1] = Program.Inventories.Count;
+                SearchIndex[1] = SearchIndex[1] < SearchCount[1] ? SearchIndex[1] : SearchCount[1] - 1;
+
+                for (int i = SearchIndex[1]; i > SearchIndex[1] - SR[1] && i > -1; i--)
+                {
+                    Dlog($"Checking Inventory: {Program.Inventories[i].CustomName}");
+
+                    if (queued.Inventory == Program.Inventories[i]) // Skip own inventory
+                        continue;
+
+                    Inventory inventory = Program.Inventories[i];
+                    MyFixedPoint target = 0;
+
+                    if (queued.OUT == 1 &&
+                        queued.Inventory.EmptyCheck() &&
+                        ProfileCompare(inventory.Profile, queued.NEW.Type, out target) &&
+                        ForceTransfer(inventory, queued.Inventory, queued.NEW,
+                        AllowableReturn(target, queued.MyTarget, queued)))
+                    {
+                        SearchIndex[1] = SearchCount[1] - 1;
+                        return true;
+                    }
+                }
+
+                if (Reverse(1))
+                    return true; // found nothing
+
+                return false;
+            }*/
+
+        }
+        public class TallyPumper : Op
+        {
+            public FindSubJob SubSearch;
+            public FindSlotJob SlotSearch;
+
+            public TallyPumper(Program prog, bool active = true) : base(prog, active)
+            {
+                SubSearch = new FindSubJob(prog.ROOT, this);
+                SlotSearch = new FindSlotJob(prog.ROOT, this);
+                SubSearch.Chain = SlotSearch;
+                SubSearch.ChainJob = new Job(JobType.WORK);
+                Name = "PUMP";
+            }
+
+            public override bool HasWork()
+            {
+                WorkCount = Program.AllItemTypes.Count;
+                return Program.AllItemTypes.Count > 0;
+            }
+
+            public override bool Run()
+            {
+                base.Run();
+                if (Pumping())
+                {
+                    Next();
+                }
+
+                return true;
+            }
+
+            bool Pumping()
+            {
+                switch (SubSearch.WorkLoad(new Job(JobType.CHAIN, TallyGroup.REQUEST)))
+                {
+                    case -1:
+                        Dlog("OVER-HEAT!");
+                        return false;
+
+                    case 0:
+                        Dlog("Pump workload complete!");
+                        return false;
+
+                    case 1:
+                        return true;
+
+                    default:
+                        Dlog("Clearing bad pump job!");
+                        return true;
+                }
+            }
+        }
+        public class InventoryBrowser : Op
+        {
+            public FindTypeJob TypeMatch;
+            public FindSubJob SubMatch;
+            public PullSlotJob PullSlot;
+            public InventoryBrowser(Program prog, bool active = true) : base(prog, active)
+            {
+                TypeMatch = new FindTypeJob(prog.ROOT, this);
+                SubMatch = new FindSubJob(prog.ROOT, this);
+                PullSlot = new PullSlotJob(prog.ROOT, this);
+                Name = "BROWSE";
+            }
+
+            public override bool HasWork()
+            {
+                WorkCount = Program.Requesters.Count;
+                //SearchCount = Program.AllItemTypes.Count;
+                return WorkCount > 0;// && SearchCount > 0;
+            }
+
+            public override bool Run()
+            {
+                base.Run();
+
+                if (BrowseItem())
+                    Next();
+
+                return true;
+            }
+
+            bool BrowseItem()
+            {
+                return false;
+            }
+
+        }
+        public class ProductionManager : Op
+        {
+            public ProductionManager(Program prog, bool active = true) : base(prog, active)
+            {
+                Name = "PROD";
+            }
+
+            public override bool HasWork()
+            {
+                WorkCount = Program.Productions.Count;
+                //WorkCount[1] = Program.Assemblers.Count;
+                return WorkCount > 0;//&& WorkCount[1] > 0;
+            }
+
+            public override bool Run()
+            {
+                base.Run();
+                return base.Run();
+            }
+        }
+
         public class block : Root
         {
             public long BlockID;
@@ -1275,7 +1830,7 @@ namespace IngameScript
                 CustomName = TermBlock.CustomName.Replace(bMeta.Root.Signature, "");
                 BlockID = TermBlock.EntityId;
                 Priority = -1;
-                Profile = new FilterProfile();
+                Profile = new FilterProfile(bMeta.Root);
             }
 
             public bool CheckBlockExists()
@@ -1326,7 +1881,7 @@ namespace IngameScript
                 Delay = 1;
                 Timer = 0;
 
-                Meta = new DisplayMeta(bMeta.Root);
+                Meta = new DisplayMeta(DefSigCount);
             }
             public override void Setup()
             {
@@ -1538,7 +2093,7 @@ namespace IngameScript
                             break;
 
                         case ScreenMode.TALLY:
-                            AppendLine(StrForm.HEADER, "[Tally]\n");
+                            AppendLine(StrForm.HEADER, "[Tally]");
                             TallyBuilder();
                             break;
                     }
@@ -1782,10 +2337,6 @@ namespace IngameScript
                         SortBuilder(target);
                         break;
 
-                    case ScreenMode.INVENTORY:
-                        InvBuilder(target);
-                        break;
-
                     case ScreenMode.RESOURCE:
                         ResBuilder(target);
                         break;
@@ -1821,62 +2372,7 @@ namespace IngameScript
                 foreach (Filter filter in target.Profile.Filters)
                     AppendLine(StrForm.FILTER, RawFilter(filter));
             }
-            void InvBuilder(block target)
-            {
-                if (target is Producer)
-                {
-                    /*
-                    0 = InputHeader
-                    x = InputCount
-                    x+1 = OutputHeader
-                     */
 
-                    List<MyInventoryItem> inItems = new List<MyInventoryItem>();
-                    List<MyInventoryItem> outItems = new List<MyInventoryItem>();
-
-                    ((Producer)target).ProdBlock.InputInventory.GetItems(inItems);
-                    ((Producer)target).ProdBlock.OutputInventory.GetItems(outItems);
-
-                    OutputCount = inItems.Count + outItems.Count;
-
-                    InventoryListBuilder(inItems, OutputIndex, OutputCount - 1, "|Input|");
-                    InventoryListBuilder(inItems, OutputIndex - (inItems.Count + 1), OutputCount - 2, "|Output|");
-                }
-
-                else if (target is Inventory)
-                {
-                    List<MyInventoryItem> items = new List<MyInventoryItem>();
-                    IMyInventoryOwner owner = ((Inventory)target).Owner;
-                    IMyInventory inventory = owner.GetInventory(0);
-                    inventory.GetItems(items);
-                    OutputCount = items.Count;
-
-                    InventoryListBuilder(items, OutputIndex, OutputCount);
-                }
-
-                else
-                    AppendLine(StrForm.WARNING, "Invalid Block Type!\n");
-
-                AppendLine(StrForm.EMPTY);
-            }
-            void InventoryListBuilder(List<MyInventoryItem> items, int startIndex, int lineCap, string header = null)
-            {
-                if (items.Count < 1)
-                {
-                    AppendLine(StrForm.WARNING, "Inventory Empty!");
-                    return;
-                }
-
-                int count = items.Count;
-                count -= header == null || startIndex != 0 ? 0 : 1;
-                startIndex -= header != null && startIndex != 0 ? 1 : 0;
-
-                if (header != null)
-                    AppendLine(StrForm.HEADER, header);
-
-                for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
-                    AppendLine(StrForm.INVENTORY, RawListItem(Meta, 0, items[i].Amount, items[i].Type, Program.LIT_DEFS));
-            }
             void ProductionBuilder()
             {
                 AppendLine(StrForm.EMPTY);
@@ -1898,19 +2394,20 @@ namespace IngameScript
             {
                 AppendLine(StrForm.EMPTY);
 
-                if (Profile.Filters.Count == 0)
-                {
-                    AppendLine(StrForm.WARNING, "No Filter!");
-                    return;
-                }
-
                 MyFixedPoint target;
-                foreach (TallyProfile candidate in Program.Profiles)
+                foreach (TallyItemType type in Program.AllItemTypes)
                 {
-                    if (!ProfileCompare(Profile, candidate.Type, out target))
+                    if (!ProfileCompare(Profile, type.TypeId, out target))
                         continue;
 
-                    AppendLine(StrForm.INVENTORY, RawListItem(Meta, target, candidate.CurrentTotal, candidate.Type, Program.LIT_DEFS));
+                    AppendLine(StrForm.HEADER, $"[{type.TypeId.Replace("MyObjectBuilder_", "")}]");
+                    foreach (TallyItemSub subType in type.SubTypes)
+                    {
+                        if (!ProfileCompare(Profile, subType.Type, out target))
+                            continue;
+
+                        AppendLine(StrForm.INVENTORY, RawListItem(Meta, target, subType.CurrentTotal, subType.Type, Program.LIT_DEFS));
+                    }
                 }
             }
 
@@ -2029,7 +2526,7 @@ namespace IngameScript
         public class Inventory : block
         {
             public IMyInventoryOwner Owner;
-            public List<TallySlot> Slots = new List<TallySlot>();
+            public List<Slot> Slots = new List<Slot>();
             public List<MyInventoryItem> Buffer = new List<MyInventoryItem>();
 
             public Inventory(BlockMeta meta) : base(meta)
@@ -2040,6 +2537,10 @@ namespace IngameScript
             public override void Setup()
             {
                 base.Setup();
+                if (Profile.FILL || Profile.EMPTY)
+                    Program.Requesters.Add(this);
+                else
+                    Program.Requesters.Remove(this);
             }
             public virtual bool SnapShot()
             {
@@ -2047,29 +2548,7 @@ namespace IngameScript
                 PullInventory(this).GetItems(Buffer);
                 return Buffer.Count > 0;
             }
-            public bool Tally(int seek, int cap)
-            {
-                for (int i = seek; i < seek + cap; i++)
-                {
-                    if (i >= Slots.Count)
-                    {
-                        if (i >= Buffer.Count) // List done
-                        {
-                            Buffer.Clear();
-                            return true;
-                        }
 
-                        Slots.Add(new TallySlot(Buffer[i], this, i));
-                    }
-
-                    if (i >= Buffer.Count)
-                        Slots[Slots.Count - 1].Kill();
-                        
-                    else
-                        Slots[i].Update(Buffer[i]);
-                }
-                return false;
-            }
 
             public bool IsFull()
             {
@@ -2152,7 +2631,6 @@ namespace IngameScript
         {
             public IMyRefinery RefineBlock;
 
-
             public Refinery(BlockMeta meta) : base(meta)
             {
                 RefineBlock = (IMyRefinery)meta.Block;
@@ -2179,7 +2657,29 @@ namespace IngameScript
         }
 
         /// Helpers
-        static bool Transfer(StringBuilder debug, TallySlot source, TallySlot dest, MyFixedPoint target)
+        static bool CheckCandidate<T>(IMyTerminalBlock block, List<T> list) where T : block
+        {
+            if (block == null)
+                return false;
+            return (list.FindIndex(x => x.BlockID == block.EntityId) < 0 && block.CustomName.Contains(Signature));
+        }
+        static bool PullSignedTerminalBlocks(List<IMyTerminalBlock> blocks, List<IMyBlockGroup> groups)
+        {
+            blocks.Clear();
+            IMyBlockGroup group = groups.Find(x => Contains(x.Name, Signature));
+            if (group == null)
+                return false;
+
+            group.GetBlocks(blocks);
+            return true;
+        }
+        static bool ForceTransfer(Inventory target, Inventory source, MyInventoryItem item, MyFixedPoint amount)
+        {
+            if (amount != 0)
+                return PullInventory(target).TransferItemFrom(PullInventory(source, false), item, amount);
+            return PullInventory(target).TransferItemFrom(PullInventory(source, false), item);
+        }
+        static bool TallyTransfer(Slot source, Slot dest, MyFixedPoint target)
         {
             try
             {
@@ -2207,7 +2707,7 @@ namespace IngameScript
         {
             return IN == 0 ? OUT : OUT == 0 ? IN : IN < OUT ? IN : OUT;
         }
-        static MyFixedPoint AllowableReturn(MyFixedPoint IN, MyFixedPoint OUT, TallySlot moving)
+        static MyFixedPoint AllowableReturn(MyFixedPoint IN, MyFixedPoint OUT, Slot moving)
         {
             MyFixedPoint DEST = MaximumReturn(IN, OUT);
             MyFixedPoint ITEM = moving.NEW.Amount;
@@ -2226,17 +2726,16 @@ namespace IngameScript
             }
             catch { return null; }
         }
-        static bool CheckInventoryLink(Inventory outbound, Inventory inbound)
+        static int MonoSpaceChars(int ratio, IMyTextPanel panel)
         {
-            if (outbound == inbound)
-                return false;
-
-            if (!PullInventory(outbound, false).IsConnectedTo(PullInventory(inbound)))
-                return false;
-
-            return true;
+            return (int)(ratio / panel.FontSize);
+        }
+        static int MonoSpaceLines(int ratio, IMyTextPanel panel)
+        {
+            return (int)(ratio / panel.FontSize);
         }
 
+        /// String builders
         static string NotationBundler(float value, int sigCount)
         {
             int sci = 0;
@@ -2300,7 +2799,7 @@ namespace IngameScript
 
             return "??????";
         }
-        static string RawListItem(DisplayMeta mod, MyFixedPoint target, MyFixedPoint current, MyItemType type, bool lit)
+        static string ItemNameCrop(MyItemType type, bool lit)
         {
             string itemName = string.Empty;
             if (lit)
@@ -2317,7 +2816,11 @@ namespace IngameScript
                 if (type.TypeId.Split('_')[1] == "Ingot" && type.SubtypeId == "Stone")
                     itemName = "Gravel";
             }
-            return $"{itemName}{Split}{ParseItemTotal(current, mod)}";
+            return itemName;
+        }
+        static string RawListItem(DisplayMeta mod, MyFixedPoint target, MyFixedPoint current, MyItemType type, bool lit)
+        {
+            return $"{ItemNameCrop(type, lit)}{Split}{ParseItemTotal(current, mod)}";
         }
         static string RawFilter(Filter filter)
         {
@@ -2331,19 +2834,27 @@ namespace IngameScript
             return output;
         }
 
-        static int MonoSpaceChars(int ratio, IMyTextPanel panel)
-        {
-            return (int)(ratio / panel.FontSize);
-        }
-        static int MonoSpaceLines(int ratio, IMyTextPanel panel)
-        {
-            return (int)(ratio / panel.FontSize);
-        }
-
         /// Comparisons
-        static bool ProfileCompare(FilterProfile profile, MyItemType type, out MyFixedPoint target, bool dirIn = true)
+        static bool ProfileCompare(FilterProfile profile, Slot slot, out MyFixedPoint target, bool dirIn = true)
         {
             target = 0;
+            return dirIn ? slot.IN > -1 && ProfileCompare(profile, slot.NEW.Type, out target, false) :
+                           slot.OUT > -1 && ProfileCompare(profile, slot.NEW.Type, out target);
+        }
+        static bool ProfileCompare(FilterProfile profile, MyItemType type, out MyFixedPoint target, bool dirIn = true)
+        {
+            return ProfileCompare(profile, type.TypeId, type.SubtypeId, out target, dirIn);
+        }
+        static bool ProfileCompare(FilterProfile profile, string type, out MyFixedPoint target, bool dirIn = true)
+        {
+            return ProfileCompare(profile, type, "any", out target, dirIn);
+        }
+        static bool ProfileCompare(FilterProfile profile, string type, string sub, out MyFixedPoint target, bool dirIn = true)
+        {
+            target = 0;
+            if (profile == null)
+                return true;
+
             bool match = false;
             bool allow = false;
             bool auto = false;
@@ -2356,7 +2867,7 @@ namespace IngameScript
 
             foreach (Filter filter in profile.Filters)
             {
-                if (!FilterCompare(filter, type))
+                if (!FilterCompare(filter, type, sub))
                     continue;
 
                 match = true;
@@ -2377,13 +2888,7 @@ namespace IngameScript
 
             return result;
         }
-        static bool FilterCompare(Filter A, MyItemType B)
-        {
-            return FilterCompare(
-                A.ItemID[0], A.ItemID[1],
-                B.TypeId.Replace("MyObjectBuilder_", ""),
-                B.SubtypeId);
-        }
+
         static bool FilterCompare(Filter A, MyProductionItem B)
         {
             return FilterCompare(
@@ -2391,12 +2896,18 @@ namespace IngameScript
                 "Component", // >: |
                 B.BlueprintId.SubtypeId.ToString());
         }
+        static bool FilterCompare(Filter A, string typeB, string subB)
+        {
+            return FilterCompare(
+                A.ItemID[0], A.ItemID[1],
+                typeB, subB);
+        }
         static bool FilterCompare(string a, string A, string b, string B)
         {
-            if (a != "any" && !Contains(a, b) && !Contains(b, a))
+            if (a != "any" && b != "any" && !Contains(a, b) && !Contains(b, a))
                 return false;
 
-            if (A != "any" && !Contains(A, B) && !Contains(B, A))
+            if (A != "any" && B != "any" && !Contains(A, B) && !Contains(B, A))
                 return false;
 
             return true;
@@ -2408,8 +2919,14 @@ namespace IngameScript
 
             return source.IndexOf(target, StringComparison.OrdinalIgnoreCase) > -1;
         }
+        static bool CheckTallyLink(Slot A, Slot B)
+        {
+            return !(A == B || A.Inventory == B.Inventory || A.Inventory == null || B.Inventory == null ||
+                !PullInventory(A.Inventory, false).IsConnectedTo(PullInventory(B.Inventory)));
+        }
 
-        static void TallyFilter(TallySlot slot)
+        /// Filter builders
+        static void TallyFilter(Slot slot)
         {
             if (slot == null || slot.Inventory == null || slot.Inventory.Profile == null)
                 return;
@@ -2451,7 +2968,6 @@ namespace IngameScript
             id[1] = type.SubtypeId.Replace("Component", "");
         }
 
-
         /// Initializers
         void BlockDetection()
         {
@@ -2465,112 +2981,8 @@ namespace IngameScript
         }
         void ClearWraps()
         {
-            foreach (Operation op in AllOps)
+            foreach (Op op in AllOps)
                 op.Clear();
-        }
-
-        /// Run Arguments
-
-        void AdjustSpeed(bool up = true)
-        {
-            if ((byte) RUN_FREQ > 0)
-            {
-                if (!up && (byte) RUN_FREQ< 4)
-                    RUN_FREQ = (UpdateFrequency)((byte)RUN_FREQ << 1);
-
-                if (up && (byte) RUN_FREQ > 1)
-                    RUN_FREQ = (UpdateFrequency) ((byte) RUN_FREQ >> 1);
-
-                if (!up && RUN_FREQ == UpdateFrequency.Update100)
-                    RUN_FREQ = UpdateFrequency.None;
-            }
-
-            if (up && RUN_FREQ == UpdateFrequency.None)
-                RUN_FREQ = UpdateFrequency.Update100;
-
-            Runtime.UpdateFrequency = RUN_FREQ;
-        }
-        string GenerateRecipes()
-        {
-            Dictionary<MyProductionItem, VRage.ObjectBuilders.SerializableDefinitionId> recipeList = new Dictionary<MyProductionItem, VRage.ObjectBuilders.SerializableDefinitionId>();
-
-            List<MyProductionItem> nextList = new List<MyProductionItem>();
-            string finalList = string.Empty;
-
-            foreach (Assembler assembler in Assemblers)
-            {
-                assembler.ProdBlock.GetQueue(nextList);
-
-                foreach (MyProductionItem item in nextList)
-                    recipeList[item] = assembler.ProdBlock.BlockDefinition;
-            }
-
-            foreach (KeyValuePair<MyProductionItem, VRage.ObjectBuilders.SerializableDefinitionId> pair in recipeList)
-                finalList += pair.Key.BlueprintId + ":" + pair.Value.SubtypeId.ToString() + ":" + pair.Key.Amount + "\n";
-
-            return finalList;
-        }
-        
-        void ClearQue()
-        {
-            foreach (Assembler producer in Assemblers)
-            {
-                Echo("Clearing...");
-                if (producer.AssemblerBlock != null)
-                    producer.AssemblerBlock.ClearQueue();
-                Echo("Cleared!");
-            }
-        }
-        void ReTagBlocks()
-        {
-            List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
-            if (!PullSignedTerminalBlocks(blocks))
-                return;
-
-            foreach (IMyTerminalBlock block in blocks)
-                if (!block.CustomName.Contains(Signature))
-                    block.CustomName += Signature;
-        }
-        void ReNameBlocks(string name, bool numbered = false)
-        {
-            List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
-            if (!PullSignedTerminalBlocks(blocks))
-                return;
-
-
-            for (int i = 0; i < blocks.Count; i++)
-            {
-                string lead = numbered ? i.ToString() : "";
-                blocks[i].CustomName = $"{lead}{name}";
-            }
-
-        }
-        void ReFilterBlocks()
-        {
-            List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
-            if (!PullSignedTerminalBlocks(blocks))
-                return;
-
-            string masterCustomData = string.Empty;
-
-            foreach (IMyTerminalBlock block in blocks)
-                if (block.CustomData.Contains(CustomSig))
-                {
-                    masterCustomData = block.CustomData.Replace(CustomSig, "");
-                    break;
-                }
-
-            foreach (IMyTerminalBlock block in blocks)
-                block.CustomData = masterCustomData;
-        }
-        void ClearAllBlockTags()
-        {
-            List<IMyTerminalBlock> allBlocks = new List<IMyTerminalBlock>();
-            GridTerminalSystem.GetBlocks(allBlocks);
-
-            foreach (IMyTerminalBlock block in allBlocks)
-                if (block.CustomName.Contains(Signature))
-                    block.CustomName = block.CustomName.Replace(Signature, string.Empty);
         }
         void RunSystemBuild()
         {
@@ -2583,7 +2995,7 @@ namespace IngameScript
             BUILT = false;
             block newBlock = null;
 
-            for (int i = AuxIndex; i < AuxIndex + BuildCap; i++)
+            for (int i = AuxIndex; i < AuxIndex + BUILD_CAP; i++)
             {
                 if (i >= DetectedBlocks.Count)
                 {
@@ -2591,7 +3003,7 @@ namespace IngameScript
                     break;
                 }
 
-                if (!CheckCandidate(DetectedBlocks[i]))
+                if (!CheckCandidate(DetectedBlocks[i], Blocks))
                     continue;
 
                 if (DetectedBlocks[i] is IMyShipConnector)
@@ -2661,40 +3073,130 @@ namespace IngameScript
             }
 
             SETUP = BUILT;
-            AuxIndex = BUILT ? 0 : AuxIndex + BuildCap;
+            AuxIndex = BUILT ? 0 : AuxIndex + BUILD_CAP;
+        }
+
+        /// Run Arguments
+        void AdjustSpeed(bool up = true)
+        {
+            if ((byte)RUN_FREQ > 0)
+            {
+                if (!up && (byte)RUN_FREQ < 4)
+                    RUN_FREQ = (UpdateFrequency)((byte)RUN_FREQ << 1);
+
+                if (up && (byte)RUN_FREQ > 1)
+                    RUN_FREQ = (UpdateFrequency)((byte)RUN_FREQ >> 1);
+
+                if (!up && RUN_FREQ == UpdateFrequency.Update100)
+                    RUN_FREQ = UpdateFrequency.None;
+            }
+
+            if (up && RUN_FREQ == UpdateFrequency.None)
+                RUN_FREQ = UpdateFrequency.Update100;
+
+            Runtime.UpdateFrequency = RUN_FREQ;
+        }
+        string GenerateRecipes()
+        {
+            Dictionary<MyProductionItem, VRage.ObjectBuilders.SerializableDefinitionId> recipeList = new Dictionary<MyProductionItem, VRage.ObjectBuilders.SerializableDefinitionId>();
+
+            List<MyProductionItem> nextList = new List<MyProductionItem>();
+            string finalList = string.Empty;
+
+            foreach (Assembler assembler in Assemblers)
+            {
+                assembler.ProdBlock.GetQueue(nextList);
+
+                foreach (MyProductionItem item in nextList)
+                    recipeList[item] = assembler.ProdBlock.BlockDefinition;
+            }
+
+            foreach (KeyValuePair<MyProductionItem, VRage.ObjectBuilders.SerializableDefinitionId> pair in recipeList)
+                finalList += pair.Key.BlueprintId + ":" + pair.Value.SubtypeId.ToString() + ":" + pair.Key.Amount + "\n";
+
+            return finalList;
+        }
+        void ClearQue()
+        {
+            foreach (Assembler producer in Assemblers)
+            {
+                Echo("Clearing...");
+                if (producer.AssemblerBlock != null)
+                    producer.AssemblerBlock.ClearQueue();
+                Echo("Cleared!");
+            }
+        }
+        void ReTagBlocks()
+        {
+            List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
+            if (!PullSignedTerminalBlocks(blocks, DetectedGroups))
+                return;
+
+            foreach (IMyTerminalBlock block in blocks)
+                if (!block.CustomName.Contains(Signature))
+                    block.CustomName += Signature;
+        }
+        void ReNameBlocks(string name, bool numbered = false)
+        {
+            List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
+            if (!PullSignedTerminalBlocks(blocks, DetectedGroups))
+                return;
+
+
+            for (int i = 0; i < blocks.Count; i++)
+            {
+                string lead = numbered ? i.ToString() : "";
+                blocks[i].CustomName = $"{lead}{name}";
+            }
+
+        }
+        void ReFilterBlocks()
+        {
+            List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
+            if (!PullSignedTerminalBlocks(blocks, DetectedGroups))
+                return;
+
+            string masterCustomData = string.Empty;
+
+            foreach (IMyTerminalBlock block in blocks)
+                if (block.CustomData.Contains(CustomSig))
+                {
+                    masterCustomData = block.CustomData.Replace(CustomSig, "");
+                    break;
+                }
+
+            foreach (IMyTerminalBlock block in blocks)
+                block.CustomData = masterCustomData;
+        }
+        void ClearAllBlockTags()
+        {
+            List<IMyTerminalBlock> allBlocks = new List<IMyTerminalBlock>();
+            GridTerminalSystem.GetBlocks(allBlocks);
+
+            foreach (IMyTerminalBlock block in allBlocks)
+                if (block.CustomName.Contains(Signature))
+                    block.CustomName = block.CustomName.Replace(Signature, string.Empty);
+        }
+        void BuildProductions(string recipes)
+        {
+            string[] recipeList = recipes.Split('\n');
+            foreach (string recipe in recipeList)
+            {
+                ProdMeta? chk = ReadRecipe(recipe, ROOT);
+                if (chk == null)
+                    continue;
+                ProdMeta meta = (ProdMeta)chk;
+                Production newProd = new Production(meta);
+                Productions.Add(newProd);
+            }
         }
 
         /// Main
         void Debugging()
         {
+            Debug.Append($"CallCount: {SEARCH_COUNT}");
             mySurface.WriteText(Debug);
             Debug.Clear();
-
-            int ix = Scanner.WIx[0];
-            Debug.Append(
-                $"Scanning: {Inventories[ix].CustomName}\n" +
-                $"Buffer/Slot Counts: {Inventories[ix].Buffer.Count}/{Inventories[ix].Slots.Count}\n" +
-                $"Total Pending Requests: {Matcher.Queue.Count}\n" +
-                $"Pump WorkingIndices (IN/OUT): {Pumper.WIx[1]}/{Pumper.WIx[0]}\n" +
-                $"======================================\n");
-
-            if (Matcher.Queue.Count > 0)
-            {
-                Debug.Append($"What?\n");
-                Debug.Append($"Current Match Requester: {Matcher.Queue[0].Inventory.CustomName}\n");
-                Debug.Append($"Current Match Request: {Matcher.Queue[0].NEW.Type}\n");
-                Debug.Append($"Current Match Location: {Matcher.CurrentPhase()}\n");
-                Debug.Append($"======================================\n");
-            }
-                
-            foreach (TallyProfile profile in Profiles)
-                Debug.Append($"{profile.Type} : {profile.CurrentTotal}\n");
-            
-            /*Debug.Append($" {Inventories[Scanner.WIx[0]].CustomName}:\n");
-
-            foreach (TallySlot slot in Inventories[Scanner.WIx[0]].Slots)
-                Debug.Append($"{slot.NEW.Type}:{slot.NEW.Amount}\n");*/
-            
         }
         void RunArguments(string argument)
         {
@@ -2757,6 +3259,7 @@ namespace IngameScript
                 case "SORT":
                     Pumper.Toggle();
                     Matcher.Toggle();
+                    Browser.Toggle();
                     break;
 
                 case "DISPLAY":
@@ -2806,57 +3309,34 @@ namespace IngameScript
                 $"{EchoLoop[EchoCount]} Torqk's Grid Manager {EchoLoop[EchoCount]}\n" +
                  "====================\n" +
                 $"Program Frquency: {RUN_FREQ}\n" +
-                $"DETECTED: {DETECTED} | BUILT: {BUILT} | SETUP: {SETUP} | FAIL: {FAIL}\n" +
+                $"DETECTED: {DETECTED} | BUILT: {BUILT} | SETUP: {SETUP}\n" +
                 $"Total Managed Blocks/Inventories: {Blocks.Count}/{Inventories.Count}\n" +
-                $"Current: Name : Ix[0]/Count[0]/Total[0]\n");
+                $"Current: Name : Ix/Count/Total\n");
 
                 for (int i = 0; i < ActiveOps.Count; i++)
+                {
                     EchoBuilder.Append($"{(ActiveOps[CurrentOp] == ActiveOps[i] ? ">>" : "==")}" +
-                        $"{ActiveOps[i].Name}:{ActiveOps[i].WIx[0]}/{ActiveOps[i].WC[0]}/{ActiveOps[i].WT[0]}||" +
-                                            $"{ActiveOps[i].SIx[1]}/{ActiveOps[i].SC[1]}/{ActiveOps[i].SB[1]}\n");
+                        $"{ActiveOps[i].Name}:{ActiveOps[i].WorkIndex}/{ActiveOps[i].WorkCount}/{ActiveOps[i].WorkTotal}\n");
+                    if (ActiveOps[i].CurrentWork != null)
+                        EchoBuilder.Append(
+                            $"{ActiveOps[i].CurrentWork.Name}: {ActiveOps[i].CurrentWork.SIx}/{ActiveOps[i].CurrentWork.SearchCount}\n");
+                }
+
 
                 EchoBuilder.Append("====================\n");
             }
             catch { EchoBuilder.Append("FAIL - POINT!"); }
         }
-        
-        bool CheckCandidate(IMyTerminalBlock block)
+        void LoadRecipes()
         {
-            if (block == null)
-                return false;
-            return (Blocks.FindIndex(x => x.BlockID == block.EntityId) < 0 && block.CustomName.Contains(Signature));
+            Me.CustomData = Storage;
         }
-        bool PullSignedTerminalBlocks(List<IMyTerminalBlock> blocks)
-        {
-            blocks.Clear();
-            List<IMyBlockGroup> groups = new List<IMyBlockGroup>();
-            GridTerminalSystem.GetBlockGroups(groups);
-            IMyBlockGroup group = groups.Find(x => Contains(x.Name, Signature));
-            if (group == null)
-                return false;
 
-            group.GetBlocks(blocks);
-            return true;
-        }
-        void BuildProductions(string recipes)
-        {
-            string[] recipeList = recipes.Split('\n');
-            foreach (string recipe in recipeList)
-            {
-                ProdMeta? chk = ReadRecipe(recipe, ROOT);
-                if (chk == null)
-                    continue;
-                ProdMeta meta = (ProdMeta)chk;
-                Production newProd = new Production(meta);
-                Productions.Add(newProd);
-            }
-        }
         public int RequestIndex()
         {
             ROOT_INDEX++;
             return ROOT_INDEX - 1;
         }
-
         public Program()
         {
             mySurface = Me.GetSurface(0);
@@ -2867,20 +3347,25 @@ namespace IngameScript
             SetupOps();
             LoadRecipes();
             BuildProductions(Me.CustomData);
-            BlockDetection();
 
             Runtime.UpdateFrequency = RUN_FREQ;
         }
         public void Main(string argument, UpdateType updateSource)
         {
+            SEARCH_COUNT = 0;
             //Debugging();
             RunArguments(argument);
             ProgEcho();
             //mySurface.WriteText(Debug);
 
+            //if (FAIL)
+            //return;
 
-            if (FAIL)
+            if (!DETECTED)
+            {
+                BlockDetection();
                 return;
+            }
 
             if (!BUILT)
             {
@@ -2891,6 +3376,7 @@ namespace IngameScript
             try
             {
                 RunOperations();
+                Debugging();
             }
             catch { Debug.Append("FAIL-POINT!"); }
 
@@ -2899,10 +3385,7 @@ namespace IngameScript
         {
             Storage = Me.CustomData;
         }
-        void LoadRecipes()
-        {
-            Me.CustomData = Storage;
-        }
+
         #endregion
     }
 }
