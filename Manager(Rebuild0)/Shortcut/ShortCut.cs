@@ -423,12 +423,14 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         public enum WorkType
         {
             NONE,
+            CHAIN, // Search result
+            LINK,
             SCAN,
             PUMP
         }
         public enum CompareType
         {
-            NONE,
+            DEFAULT,
             STR_TYPE,
             STR_SUB,
             SLOT
@@ -516,12 +518,12 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public CompareType Comparison;
             public TallyGroup Target;
 
-            public Job(JobType job = JobType.CHAIN, WorkType work = WorkType.NONE, TallyGroup target = TallyGroup.ALL)
+            public Job(JobType job = JobType.CHAIN, WorkType work = WorkType.NONE, CompareType comp = CompareType.DEFAULT, TallyGroup target = TallyGroup.ALL)
             {
                 JobType = job;
                 WorkType = work;
                 Target = target;
-                Comparison = CompareType.NONE;
+                Comparison = comp;
 
                 Requester = null;
                 //fCompare = null;
@@ -535,7 +537,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 JobType = type;
                 WorkType = work;
                 Target = TallyGroup.ALL;
-                Comparison = CompareType.NONE;
+                Comparison = CompareType.DEFAULT;
 
                 Requester = requester;
                 //fCompare = null;
@@ -549,7 +551,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 JobType = type;
                 WorkType = work;
                 Target = TallyGroup.ALL;
-                Comparison = CompareType.NONE;
+                Comparison = CompareType.DEFAULT;
 
                 Requester = null;
                 //fCompare = null;
@@ -648,7 +650,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             }
             void QueueSort()
             {
-                Program.Sorter.TallyQueue.Add(this);
+                Program.Sorter.Queue.Add(this);
                 ProfileQueued = true;
             }
             public bool Pump()
@@ -660,15 +662,15 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                 if (IN == 1)
                 {
-                    if (InLink.DEAD)
-                    {
-                        InLink = null;
-                        Dlog("In Link Dead!");
-                    }
-
                     if (InLink == null)
                     {
                         Dlog("No In Link!");
+                        workComplete = false;
+                    }
+                    else if (InLink.DEAD)
+                    {
+                        InLink = null;
+                        Dlog("In Link Dead!");
                         workComplete = false;
                     }
                     else if (!TallyTransfer(InLink, this, InTarget))
@@ -683,16 +685,16 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                 else if (OUT == 1)
                 {
-                    if (OutLink.DEAD)
-                    {
-                        OutLink = null;
-                        Dlog("Out Link Dead!");
-                    }
-
                     if (OutLink == null)
                     {
                         Dlog("No Out Link!");
                         workComplete = false;
+                    }
+
+                    else if (OutLink.DEAD)
+                    {
+                        OutLink = null;
+                        Dlog("Out Link Dead!");
                     }
 
                     else if (!TallyTransfer(this, OutLink, OutTarget))
@@ -1053,6 +1055,10 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 MyOp = op;
                 //ACTIVE = true;
             }
+            public int Init()
+            {
+                return WorkLoad(MyJob);
+            }
             public virtual int WorkLoad(Job job)
             {
                 Dlog($"Performing: {Name}");
@@ -1110,6 +1116,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         return 0; // fail
                 }
             }
+
             bool CheckOp(int i)
             {
                 bool maxed = Program.CallCounter();
@@ -1334,6 +1341,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     }
                 }
 
+                Dlog("Pumping...");
                 return Target[SIx].Pump();
             }
             /*public override bool ChainCall()
@@ -1495,6 +1503,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public TallyScanner(Program prog, bool active = true) : base(prog, active)
             {
                 TallyScope = new ScanSlotJob(prog.ROOT, this);
+                TallyScope.MyJob.JobType = JobType.WORK;
+                TallyScope.MyJob.WorkType = WorkType.SCAN;
                 CurrentWork = TallyScope;
                 Name = "SCAN";
             }
@@ -1508,7 +1518,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             {
                 base.Run();
 
-                if (0 == TallyScope.WorkLoad(new Job(JobType.WORK, WorkType.SCAN, Program.Inventories[WorkIndex])))
+                TallyScope.MyJob.Requester = Program.Inventories[WorkIndex];
+                if (0 == TallyScope.Init())
                     Next();
 
                 return true;
@@ -1516,28 +1527,25 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         }
         public class TallySorter : Op
         {
-            public List<Slot> TallyQueue = new List<Slot>();
+            public List<Slot> Queue = new List<Slot>();
             public FindTypeJob TypeMatch;
             public FindSubJob SubMatch;
             public TallySorter(Program prog, bool active = true) : base(prog, active)
             {
+                Name = "TALLY";
+
                 TypeMatch = new FindTypeJob(prog.ROOT, this);
-                TypeMatch.MyJob.JobType = JobType.FIND;
+                TypeMatch.MyJob = new Job(JobType.FIND, WorkType.NONE);
                 TypeMatch.WAIT = true;
 
                 SubMatch = new FindSubJob(prog.ROOT, this);
-
                 TypeMatch.Chain = SubMatch;
-                TypeMatch.ChainJob.JobType = JobType.FIND;
-                TypeMatch.ChainJob.Target = TallyGroup.ALL;
-
-                Name = "TALLY";
-                WorkIndex = 0;
+                TypeMatch.ChainJob = new Job(JobType.FIND, WorkType.NONE);
             }
 
             public override bool HasWork()
             {
-                WorkCount = TallyQueue.Count;
+                WorkCount = Queue.Count;
                 return WorkCount > 0;
             }
 
@@ -1555,18 +1563,18 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 {
                     TypeMatch.SIx = 0;
                     SubMatch.SIx = 0;
-                    TallyQueue[0].ProfileQueued = false;
-                    TallyQueue.RemoveAt(0);
+                    Queue[0].ProfileQueued = false;
+                    Queue.RemoveAt(0);
                 }
 
                 return true;
             }
             bool ProcessInbound()
             {
-                Dlog($"Processing top of sort queue: {TallyQueue[0].NEW.Type}");
-                CurrentWork = TypeMatch;
+                Dlog($"Processing top of sort queue: {Queue[0].NEW.Type}");
                 TallyItemSub newProf;
-                switch (TypeMatch.WorkLoad(new Job(JobType.FIND, WorkType.NONE, TallyQueue[0])))
+                TypeMatch.MyJob.Requester = Queue[0];
+                switch (TypeMatch.Init())
                 {
                     case -1:
                         Dlog("CORE-TEMP-CRITICAL!");
@@ -1574,20 +1582,20 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                     case 0:
                         Dlog("Un-Matched!\nNew Type/Sub/Slot");
-                        newProf = new TallyItemSub(Program.ROOT, TallyQueue[0]);
+                        newProf = new TallyItemSub(Program.ROOT, Queue[0]);
                         TallyItemType newType = new TallyItemType(Program.ROOT, newProf);
                         Program.AllItemTypes.Add(newType);
                         return true;
 
                     case 1:
                         Dlog("Type Matched!\nNew Sub/Slot");
-                        newProf = new TallyItemSub(Program.ROOT, TallyQueue[0]);
+                        newProf = new TallyItemSub(Program.ROOT, Queue[0]);
                         Program.AllItemTypes[TypeMatch.SIx].SubTypes.Add(newProf);
                         return true;
 
                     case 2:
                         Dlog("Sub Type Matched!\nNew Slot");
-                        Program.AllItemTypes[TypeMatch.SIx].SubTypes[SubMatch.SIx].Append(TallyQueue[0]);
+                        Program.AllItemTypes[TypeMatch.SIx].SubTypes[SubMatch.SIx].Append(Queue[0]);
                         return true;
                 }
 
@@ -1598,11 +1606,25 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         public class TallyMatcher : Op
         {
             public List<Slot> Queue = new List<Slot>();
+            public FindTypeJob TypeSearch;
+            public FindSubJob SubSearch;
+            public FindSlotJob SlotSearch;
 
             public TallyMatcher(Program prog, bool active = true) : base(prog, active)
             {
                 Name = "MATCH";
-                WorkIndex = 0;
+
+                TypeSearch = new FindTypeJob(prog.ROOT, this);
+                TypeSearch.MyJob = new Job(JobType.FIND);
+
+                SubSearch = new FindSubJob(prog.ROOT, this);
+                TypeSearch.Chain = SubSearch;
+                TypeSearch.ChainJob = new Job(JobType.FIND);
+
+                SlotSearch = new FindSlotJob(prog.ROOT, this);
+                SubSearch.Chain = SlotSearch;
+                SubSearch.ChainJob = new Job(JobType.FIND, WorkType.NONE, CompareType.SLOT);
+
             }
 
             public override bool HasWork()
@@ -1647,6 +1669,20 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 {
                     Dlog("Not unlinked! gtfo!");
                     return true;
+                }
+
+                TypeSearch.MyJob.Requester = Queue[0];
+
+                switch(TypeSearch.Init())
+                {
+                    case -1: // Overheat
+                        return false;
+
+                    case 0: // Didn't find all links, send to inventory browser?
+                        return true;
+
+                    case 1: // Fully matched
+                        return true;
                 }
 
                 //if (request)
@@ -1760,7 +1796,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 SlotSearch = new FindSlotJob(prog.ROOT, this);
 
                 SubSearch.Chain = SlotSearch;
-                SubSearch.ChainJob = new Job(JobType.WORK, WorkType.PUMP, TallyGroup.AVAILABLE);
+                SubSearch.ChainJob = new Job(JobType.WORK, WorkType.PUMP, CompareType.DEFAULT, TallyGroup.REQUEST);
             }
 
             public override bool HasWork()
