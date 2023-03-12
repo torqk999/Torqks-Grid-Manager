@@ -233,11 +233,12 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         const int SEARCH_CAP = 30;
         const int BUILD_CAP = 20;
 
+        static UpdateFrequency INIT_FREQ = UpdateFrequency.None;
         static readonly int[] DefScreenRatio = { 25, 17 };
         /// WARNING!! DO NOT GO FURTHER USER!! ///
 
-        // LOGIC
-        UpdateFrequency RUN_FREQ = UpdateFrequency.Update1;
+        #region LOGIC 
+        UpdateFrequency RUN_FREQ;
         bool LIT_DEFS = false;
         bool ShowProdBuilding = false;
         int ROOT_INDEX = 0;
@@ -267,19 +268,22 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         bool DETECTED;
         bool BUILT;
         bool SETUP;
+        #endregion
 
+        #region Engine
         List<IMyTerminalBlock> DetectedBlocks = new List<IMyTerminalBlock>();
         List<IMyBlockGroup> DetectedGroups = new List<IMyBlockGroup>();
 
-        // Engine
         List<Production> Productions = new List<Production>();
         List<block> Blocks = new List<block>();
         List<Display> Displays = new List<Display>();
         List<Assembler> Assemblers = new List<Assembler>();
         List<Resource> Resources = new List<Resource>();
         List<Inventory> Inventories = new List<Inventory>();
-        List<Inventory> Requesters = new List<Inventory>();
         List<TallyItemType> AllItemTypes = new List<TallyItemType>();
+
+        List<Inventory> Requesters = new List<Inventory>();
+        List<Slot> PumpRequests = new List<Slot>();
 
         DisplayManager DisplayMan;
         TallyScanner Scanner;
@@ -300,11 +304,11 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             DisplayMan = new DisplayManager(this);
             Scanner = new TallyScanner(this);
             Sorter = new TallySorter(this);
-            Linker = new TallyLinker(this);
             Pumper = new TallyPumper(this);
-            slotBrowser = new SlotBrowser(this);
-            inventoryBrowser = new InventoryBrowser(this);
-            Producing = new ProductionManager(this);
+            Linker = new TallyLinker(this);
+            slotBrowser = new SlotBrowser(this, false);
+            inventoryBrowser = new InventoryBrowser(this, false);
+            Producing = new ProductionManager(this, false);
 
             AllOps = new List<Op>()
             {
@@ -314,6 +318,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 Linker,
                 Pumper,
                 slotBrowser,
+                inventoryBrowser,
                 Producing,
             };
 
@@ -356,7 +361,9 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             return capped;
         }
 
-        ///////////////////////
+        #endregion
+
+        #region ENUMS
         public enum StrForm
         {
             EMPTY,
@@ -371,7 +378,6 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             FILTER,
             PRODUCTION
         }
-
         public enum ScreenMode
         {
             DEFAULT,
@@ -427,20 +433,23 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         {
             NONE,
             SORT,
-            CHAIN,
+            //CHAIN,
             LINK,
             SCAN,
             PUMP,
             BROWSE
         }
-        public enum CompareType
+        #endregion
+
+        /*public enum CompareType
         {
             DEFAULT,
             STR_TYPE,
             STR_SUB,
             SLOT
-        }
+        }*/
 
+        #region OBJECTS
         public struct RootMeta
         {
             public string Signature;
@@ -514,55 +523,43 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         public struct Job
         {
             public Root Requester;
-            //public Filter fCompare;
-            public string strCompare;
+            public string rawType;
+            public string rawSubType;
+            public int SearchCount;
             public int WIxA;
             public int WIxB;
             public JobType JobType;
             public WorkType WorkType;
-            public CompareType Comparison;
             public TallyGroup TargetGroup;
 
-            public Job(JobType job = JobType.CHAIN, WorkType work = WorkType.NONE, CompareType comp = CompareType.DEFAULT, TallyGroup target = TallyGroup.ALL)
+            public Job(JobType job = JobType.CHAIN, WorkType work = WorkType.NONE, TallyGroup target = TallyGroup.ALL)
             {
                 JobType = job;
                 WorkType = work;
                 TargetGroup = target;
-                Comparison = comp;
 
                 Requester = null;
-                //fCompare = null;
-                strCompare = null;
+                rawType = null;
+                rawSubType = null;
                 WIxA = 0;
                 WIxB = 0;
+                SearchCount = 0;
             }
 
-            public Job(JobType type, WorkType work, Root requester, int wixA = 0, int wixB = 0)
+            public void SlotCompare(Slot slot)
             {
-                JobType = type;
-                WorkType = work;
-                TargetGroup = TallyGroup.ALL;
-                Comparison = CompareType.DEFAULT;
+                if (slot == null)
+                    return;
 
-                Requester = requester;
-                //fCompare = null;
-                strCompare = null;
-                WIxA = wixA;
-                WIxB = wixB;
+                Requester = slot;
+                rawType = slot.NEW.Type.TypeId;
+                rawSubType = slot.NEW.Type.SubtypeId;
             }
 
-            public Job(JobType type, WorkType work, string compare, int wixA = 0, int wixB = 0)
+            public void CopyCompare(Job source)
             {
-                JobType = type;
-                WorkType = work;
-                TargetGroup = TallyGroup.ALL;
-                Comparison = CompareType.DEFAULT;
-
-                Requester = null;
-                //fCompare = null;
-                strCompare = compare;
-                WIxA = wixA;
-                WIxB = wixB;
+                rawType = source.rawType;
+                rawSubType = source.rawSubType;
             }
         }
 
@@ -1075,10 +1072,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public Job MyJob;
             public Job ChainJob;
             public string Name;
-            public string CurrentCompare;
-            public bool WAIT;
             public int SIx = 0;
-            public int SearchCount = 0;
 
             public Work(RootMeta meta, Op op) : base(meta)
             {
@@ -1093,8 +1087,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             {
                 Dlog($"Performing: {Name}");
                 
-                SearchCount = 0;
                 MyJob = job;
+                MyOp.CurrentWork = this; 
 
                 if (Chain != null)
                     ChainJob.Requester = job.Requester;
@@ -1124,6 +1118,12 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 switch (MyJob.JobType)
                 {
                     case JobType.FIND:
+                        if(MyJob.Requester is Slot &&
+                            ((Slot)MyJob.Requester).DEAD)
+                        {
+                            return -2;
+                        }
+
                         Dlog("Searching...");
                         if (Compare())
                         {
@@ -1162,12 +1162,12 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
             public int IterateScope(bool forward = true)
             {
-                int result = 0;
-                for (int i = SIx; i < SearchCount; i++)
+                int result = MyJob.JobType == JobType.WORK ? 1 : 0;
+                for (int i = SIx; i < MyJob.SearchCount; i++)
                 {
-                    Dlog($"Processing:{i}/{SearchCount}");
+                    Dlog($"Processing:{i}/{MyJob.SearchCount}");
                     SIx = i;
-                    result = forward? Peek(i) : Peek(SearchCount - (i+1));
+                    result = forward? Peek(i) : Peek(MyJob.SearchCount - (i+1));
                     Dlog($"Peek Result:{result}");
 
                     if (result == -1) // Operation call max
@@ -1188,8 +1188,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         break;
                     }
                 }
+
                 Dlog($"Search Result:{result == 1}");
-                SIx = WAIT ? SIx : 0;
                 return result; // Found nothing/something
             }
         }
@@ -1211,31 +1211,12 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 if (base.WorkLoad(job) != 1)
                     return 0;
 
-                if (job.Requester is Slot)
-                {
-                    if (Chain != null)
-                    {
-                        Dlog("ChainJob updated!");
-                        ChainJob.Requester = job.Requester;
-                    }
-
-                    Dlog($"Slot Request: {((Slot)job.Requester).NEW.Type.TypeId}");
-                    CurrentCompare = ((Slot)job.Requester).NEW.Type.TypeId;
-                }
-
-                else if (job.strCompare != null)
-                    CurrentCompare = job.strCompare;
-
-                else
-                    CurrentCompare = "any";
-
-                SearchCount = Program.AllItemTypes.Count;
                 return IterateScope();
             }
             public override bool Compare()
             {
-                Dlog($"Comparing type: {CurrentCompare} || {Program.AllItemTypes[SIx].TypeId}");
-                return CurrentCompare == "any" || Program.AllItemTypes[SIx].TypeId == CurrentCompare;
+                Dlog($"Comparing type: {MyJob.rawType} || {Program.AllItemTypes[SIx].TypeId}");
+                return MyJob.rawType == "any" || Program.AllItemTypes[SIx].TypeId == MyJob.rawType;
             }
             public override bool DoWork()
             {
@@ -1249,8 +1230,11 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     return 0;
                 }
 
+                ChainJob.CopyCompare(MyJob);
+
                 ChainJob.WIxA = SIx;
-                MyOp.CurrentWork = Chain;
+                ChainJob.SearchCount = Program.AllItemTypes[SIx].SubTypes.Count;
+
                 return Chain.WorkLoad(ChainJob);
             }
         }
@@ -1265,27 +1249,12 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 if (base.WorkLoad(job) != 1)
                     return 0;
 
-                if (job.Requester is Slot)
-                    CurrentCompare = ((Slot)job.Requester).NEW.Type.SubtypeId;
-
-                else if (job.strCompare != null)
-                    CurrentCompare = job.strCompare;
-
-                else
-                    CurrentCompare = "any";
-
-                if (job.Requester is TallyItemType)
-                    SearchCount = ((TallyItemType)job.Requester).SubTypes.Count; //[MyJob.WIxB].Tallies[(int)MyJob.Target].Count;
-
-                else
-                    SearchCount = Program.AllItemTypes[MyJob.WIxA].SubTypes.Count; //[MyJob.WIxB].Tallies[(int)MyJob.Target].Count;
-
                 return IterateScope();
             }
             public override bool Compare()
             {
-                Dlog($"Comparing sub: {CurrentCompare} || {Program.AllItemTypes[MyJob.WIxA].SubTypes[SIx].Type.SubtypeId}");
-                return CurrentCompare == "any" || Program.AllItemTypes[MyJob.WIxA].SubTypes[SIx].Type.SubtypeId == CurrentCompare;
+                Dlog($"Comparing sub: {MyJob.rawSubType} || {Program.AllItemTypes[MyJob.WIxA].SubTypes[SIx].Type.SubtypeId}");
+                return MyJob.rawSubType == "any" || Program.AllItemTypes[MyJob.WIxA].SubTypes[SIx].Type.SubtypeId == MyJob.rawSubType;
             }
             public override bool DoWork()
             {
@@ -1299,9 +1268,12 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     return 0;
                 }
 
+                ChainJob.CopyCompare(MyJob);
+
                 ChainJob.WIxA = MyJob.WIxA;
                 ChainJob.WIxB = SIx;
-                MyOp.CurrentWork = Chain;
+                ChainJob.SearchCount = Program.AllItemTypes[MyJob.WIxA].SubTypes[SIx].Tallies[(int)MyJob.TargetGroup].Count;
+
                 return Chain.WorkLoad(ChainJob);
             }
         }
@@ -1322,59 +1294,34 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                 if (job.Requester == null)
                 {
-                    SlotList = Program.AllItemTypes[job.WIxA].SubTypes[job.WIxB].Tallies[(int)job.TargetGroup];
-                    SearchCount = SlotList == null ? 0 : SlotList.Count;
+                    SlotList = Program.PumpRequests;
+                    MyJob.SearchCount = SlotList.Count;
+                    //SlotList = Program.AllItemTypes[job.WIxA].SubTypes[job.WIxB].Tallies[(int)job.TargetGroup];
                 }
                     
-                    
-                if (job.Requester is Slot)
+                if (job.Requester is Slot &&
+                    ((Slot)job.Requester).Profile != null)
                 {
                     SlotList = ((Slot)job.Requester).Profile.Tallies[(int)job.TargetGroup];
-                    SearchCount = SlotList == null ? 0 : SlotList.Count;
+                    MyJob.SearchCount = SlotList.Count;
                 }
                     
                 if (job.Requester is Inventory)
                 {
-                    Inventory req = (Inventory)job.Requester;
-                    SlotList = req.Slots;
-
-                    if (job.WorkType == WorkType.SCAN)
-                    {
-                        req.SnapShot();
-                        SearchCount = req.Buffer.Count > req.Slots.Count ? req.Buffer.Count : req.Slots.Count;
-                    }
-                    else
-                        SearchCount = req.Slots.Count;
+                    Inventory inv = (Inventory)job.Requester;
+                    SlotList = inv.Slots;
+                    MyJob.SearchCount = inv.Slots.Count > inv.Buffer.Count ? inv.Slots.Count : inv.Buffer.Count;
                 }
 
-                int state = IterateScope();
-                if (state == 0)
-                {
-                    Dlog("Done Scanning");
-                    SIx = 0;
-                }
-                return state;
+                return IterateScope();
             }
             public override bool Compare()
             {
-                switch (MyJob.Comparison)
-                {
-                    case CompareType.STR_TYPE:
-                        return SlotList[SIx].NEW.Type.TypeId == MyJob.strCompare;
+                if (!(MyJob.Requester is Slot))
+                    return false;
 
-                    case CompareType.STR_SUB:
-                        return SlotList[SIx].NEW.Type.SubtypeId == MyJob.strCompare;
+                return SlotCompare((Slot)MyJob.Requester, SlotList[SIx]); // Maybe???
 
-                    case CompareType.SLOT:
-                        Slot request = (Slot)MyJob.Requester;
-                        if (request == null)
-                            return false;
-
-                        return SlotCompare(request, SlotList[SIx]); // Maybe???
-
-                    default:
-                        return false;
-                }
             }
             public override bool DoWork()
             {
@@ -1387,11 +1334,10 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         return SlotScan();
 
                     case WorkType.PUMP:
-                        Dlog("Pumping...");
-                        return SlotList[SIx].Pump();
+                        return SlotPump();
 
                     case WorkType.LINK:
-                        return SlotLink(MyJob.TargetGroup);
+                        return SlotLink();
 
                     case WorkType.BROWSE:
                         return false; // <<<<<<<<<<<<<<<<<<<<
@@ -1400,22 +1346,29 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         return false;
                 }
             }
-            bool SlotLink(TallyGroup group)
+
+            bool SlotLink()
             {
                 Slot queued = (Slot)MyJob.Requester;
                 if (queued == null)
                 {
                     Dlog("null Queued!");
-                    return false;
+                    return true;
+                }
+
+                if (queued.DEAD)
+                {
+                    Dlog("DEAD Queued!");
+                    return true;
                 }
 
                 if (queued.Profile == null)
                 {
                     Dlog("null Queued Profile!");
-                    return false;
+                    return true;
                 }
 
-                Slot match = queued.Profile.GetSlot(group, SIx);
+                Slot match = SlotList[SIx];//queued.Profile.GetSlot(MyJob.TargetGroup, SIx);
                 if (match == null)
                 {
                     Dlog("null Match!");
@@ -1450,7 +1403,6 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                 return !queued.CheckUnLinked();
             }
-
             bool SlotScan()
             {
                 Inventory inv = (Inventory)MyJob.Requester;
@@ -1463,7 +1415,10 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 if (SIx >= inv.Slots.Count) // Not enough slots
                 {
                     Dlog("Adding slot");
-                    inv.Slots.Add(new Slot(Program.ROOT, inv, SIx));
+                    Slot sloot = new Slot(Program.ROOT, inv, SIx);
+                    if (sloot.IN == 1 || sloot.OUT == 1)
+                        Program.PumpRequests.Add(sloot);
+                    inv.Slots.Add(sloot);
                 }
 
                 if (SIx >= inv.Buffer.Count) // Too many slots
@@ -1478,63 +1433,33 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     inv.Slots[SIx].Update(inv.Buffer[SIx]);
                 }
 
-                return SIx + 1 >= SearchCount; // work to end of list
+                return false; // Keep Working!
+            }
+            bool SlotPump()
+            {
+                if (SlotList[SIx].DEAD)
+                {
+                    Dlog("Dead Slot, removing from pump requesters...");
+
+                    SlotList.RemoveAt(SIx);
+                    MyJob.SearchCount = SlotList.Count;
+                    SIx--;
+                    return false;
+                }
+
+                Dlog("Pumping...");
+
+                if (!SlotList[SIx].Pump() && !SlotList[SIx].LinkQueued)
+                {
+                    Dlog("Requesting Links!");
+                    SlotList[SIx].LinkQueued = true;
+                    Program.Linker.Queue.Add(SlotList[SIx]);
+                }
+
+                return false; // Keep Working!
             }
         }
-        /*public class ScanSlot : Worker
-        {
-            Inventory Scanning;
-            public ScanSlot(RootMeta meta, Op op) : base(meta, op)
-            {
-                Name = "SCAN_PROGRESS";
-            }
-
-            public override int WorkLoad(Job job)
-            {
-                MyJob = job;
-
-                if (!(job.Requester is Inventory))
-                    return 0;
-
-                Scanning = (Inventory)job.Requester;
-                Scanning.SnapShot();
-                SearchCount = Scanning.Slots.Count > Scanning.Buffer.Count ? Scanning.Slots.Count : Scanning.Buffer.Count;
-
-                Dlog($"Scanning: {Scanning.CustomName} [{SIx}/{SearchCount}]");
-
-                int state = IterateScopeForward();
-                if (state == 0)
-                {
-                    Dlog("Done Scanning");
-                    SIx = 0;
-                    Scanning.Buffer.Clear();
-                }
-                return state;
-            }
-
-            public override bool DoWork()
-            {
-                if (SIx >= Scanning.Slots.Count) // Not enough slots
-                {
-                    Dlog("Adding slot");
-                    Scanning.Slots.Add(new Slot(Program.ROOT, Scanning, SIx));
-                }
-
-                if (SIx >= Scanning.Buffer.Count) // Too many slots
-                {
-                    Dlog("Killing slot");
-                    Scanning.Slots[Scanning.Slots.Count - 1].Kill();
-                }
-
-                else
-                {
-                    Dlog("Updating slot");
-                    Scanning.Slots[SIx].Update(Scanning.Buffer[SIx]);
-                }
-
-                return SIx + 1 < SearchCount; // work to end of list
-            }
-        }
+        
         /*public class PullSlot : Worker//<Slot>
         {
             public Inventory InBound;
@@ -1600,11 +1525,12 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             }
             // -1 = Search Capped, 0 = Scope Searched, 1 = Task Complete 
         }
-        public class SlotQueueOp : Op
+
+        public class QueueOp : Op
         {
             public List<Slot> Queue = new List<Slot>();
 
-            public SlotQueueOp(Program prog, bool active) : base(prog, active)
+            public QueueOp(Program prog, bool active) : base(prog, active)
             {
             }
 
@@ -1614,62 +1540,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 return WorkCount > 0;
             }
         }
-
-        public class DisplayManager : Op
-        {
-            public DisplayManager(Program prog, bool active = true) : base(prog, active)
-            {
-                Name = "DISPLAY";
-            }
-
-            public override bool HasWork()
-            {
-                WorkCount = Program.Displays.Count;
-                return WorkCount > 0;
-            }
-
-            public override bool Run()
-            {
-                base.Run();
-                if (Program.Displays[WorkIndex].Update())
-                    Next();
-
-                return true;
-            }
-        }
-        public class TallyScanner : Op
-        {
-            public SlotWork TallyScope;
-            public TallyScanner(Program prog, bool active = true) : base(prog, active)
-            {
-                TallyScope = new SlotWork(prog.ROOT, this);
-                TallyScope.MyJob.JobType = JobType.WORK;
-                TallyScope.MyJob.WorkType = WorkType.SCAN;
-                CurrentWork = TallyScope;
-                Name = "SCAN";
-            }
-
-            public override bool HasWork()
-            {
-                WorkCount = Program.Inventories.Count;
-                return WorkCount > 0;
-            }
-            public override bool Run()
-            {
-                base.Run();
-
-                TallyScope.MyJob.Requester = Program.Inventories[WorkIndex];
-                if (TallyScope.Init() == 1)
-                {
-                    TallyScope.SIx = 0;
-                    Next();
-                }
-                    
-
-                return true;
-            }
-        }
-        public class TallySorter : SlotQueueOp
+        public class TallySorter : QueueOp
         {
             public TypeWork TypeMatch;
             public SubWork SubMatch;
@@ -1678,11 +1549,9 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 Name = "SORT";
 
                 TypeMatch = new TypeWork(prog.ROOT, this);
-                TypeMatch.WAIT = true;
                 TypeMatch.MyJob = new Job(JobType.FIND, WorkType.SORT);
 
                 SubMatch = new SubWork(prog.ROOT, this);
-                SubMatch.WAIT = true;
                 TypeMatch.Chain = SubMatch;
                 TypeMatch.ChainJob = new Job(JobType.FIND, WorkType.SORT);
             }
@@ -1692,7 +1561,10 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 base.Run();
                 Dlog($"Sorts Remaining: {WorkCount}");
 
-                if (ProcessQue())
+                TypeMatch.MyJob.SlotCompare(Queue[0]);
+                TypeMatch.MyJob.SearchCount = Program.AllItemTypes.Count;
+
+                if (Sort())
                 {
                     TypeMatch.SIx = 0;
                     SubMatch.SIx = 0;
@@ -1702,13 +1574,16 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                 return true;
             }
-            bool ProcessQue()
+            bool Sort()
             {
                 Dlog($"Processing top of sort queue: {Queue[0].NEW.Type}");
                 TallyItemSub newProf;
-                TypeMatch.MyJob.Requester = Queue[0];
                 switch (TypeMatch.Init())
                 {
+                    case -2:
+                        Dlog("DEAD!");
+                        return true;
+
                     case -1:
                         Dlog("CORE-TEMP-CRITICAL!");
                         return false;
@@ -1730,13 +1605,13 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         Dlog("Sub Type Matched!\nNew Slot");
                         Program.AllItemTypes[TypeMatch.SIx].SubTypes[SubMatch.SIx].Append(Queue[0]);
                         return true;
-                }
 
-                Dlog("How Sam? Clearing Que >:| ");
-                return true;
+                    default:
+                        return true;
+                }
             }
         }
-        public class TallyLinker : SlotQueueOp
+        public class TallyLinker : QueueOp
         {
             public SlotWork SlotLink;
 
@@ -1745,11 +1620,12 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 Name = "LINK";
 
                 SlotLink = new SlotWork(prog.ROOT, this);
-                SlotLink.MyJob = new Job(JobType.WORK, WorkType.LINK, CompareType.DEFAULT, TallyGroup.AVAILABLE);
+                SlotLink.MyJob = new Job(JobType.WORK, WorkType.LINK, TallyGroup.AVAILABLE);
             }
             public override bool Run()
             {
                 base.Run();
+
                 if (ProcessQueue())
                 {
                     Queue[0].LinkQueued = false;
@@ -1808,8 +1684,6 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 }
             }
 
-
-
             /*
             bool DumpUnwanted()
             {
@@ -1847,60 +1721,9 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             }*/
 
         }
-        public class TallyPumper : Op
+        public class InventoryBrowser : QueueOp
         {
-            public SubWork SubSearch;
-            public SlotWork SlotSearch;
-
-            public TallyPumper(Program prog, bool active = true) : base(prog, active)
-            {
-                Name = "PUMP";
-
-                SubSearch = new SubWork(prog.ROOT, this);
-                SubSearch.MyJob = new Job(JobType.CHAIN, WorkType.NONE);
-
-                SlotSearch = new SlotWork(prog.ROOT, this);
-                SubSearch.Chain = SlotSearch;
-                SubSearch.ChainJob = new Job(JobType.WORK, WorkType.PUMP, CompareType.DEFAULT, TallyGroup.REQUEST);
-            }
-
-            public override bool HasWork()
-            {
-                WorkCount = Program.AllItemTypes.Count;
-                return Program.AllItemTypes.Count > 0;
-            }
-
-            public override bool Run()
-            {
-                base.Run();
-                if (Pumping())
-                    Next();
-
-                return true;
-            }
-
-            bool Pumping()
-            {
-                SubSearch.MyJob.WIxA = WorkIndex;
-                switch (SubSearch.Init())
-                {
-                    case -1:
-                        Dlog("OVER-HEAT!");
-                        return false;
-
-                    case 0:
-                    case 1:
-                        Dlog("Pump workload complete!");
-                        return true;
-
-                    default:
-                        Dlog("Clearing bad pump job!");
-                        return true;
-                }
-            }
-        }
-        public class InventoryBrowser : SlotQueueOp
-        {
+            public InventoryWork InventoryBrowse;
             public InventoryBrowser(Program prog, bool active = true) : base(prog, active)
             {
             }
@@ -1940,6 +1763,138 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 return false;
             }
 
+        }
+
+        public class DisplayManager : Op
+        {
+            public DisplayManager(Program prog, bool active = true) : base(prog, active)
+            {
+                Name = "DISPLAY";
+            }
+
+            public override bool HasWork()
+            {
+                WorkCount = Program.Displays.Count;
+                return WorkCount > 0;
+            }
+
+            public override bool Run()
+            {
+                base.Run();
+                if (Program.Displays[WorkIndex].Update())
+                    Next();
+
+                return true;
+            }
+        }
+        public class TallyScanner : Op
+        {
+            public SlotWork TallyScope;
+            public TallyScanner(Program prog, bool active = true) : base(prog, active)
+            {
+                Name = "SCAN";
+
+                TallyScope = new SlotWork(prog.ROOT, this);
+                TallyScope.MyJob = new Job(JobType.WORK, WorkType.SCAN);
+            }
+
+            public override bool HasWork()
+            {
+                WorkCount = Program.Inventories.Count;
+                return WorkCount > 0;
+            }
+            public override bool Run()
+            {
+                base.Run();
+
+                Inventory working = Program.Inventories[WorkIndex];
+                TallyScope.MyJob.Requester = working;
+                Dlog($"Inventory Buffered: {working.Buffered}");
+                if (!working.Buffered)
+                {
+                    working.Buffered = true;
+                    working.SnapShot();
+                    TallyScope.MyJob.SearchCount = working.Buffer.Count > working.Slots.Count ? working.Buffer.Count : working.Slots.Count;
+                    Dlog($"Buffering: {TallyScope.MyJob.SearchCount}");
+                }
+
+                Dlog($"ScanIndex: {TallyScope.SIx}");
+
+                if (Scan())
+                {
+                    working.Buffered = false;
+                    TallyScope.SIx = 0;
+                    Next();
+                }
+                    
+                return true;
+            }
+
+            bool Scan()
+            {
+                Dlog($"Scanning Inventory: {Program.Inventories[WorkIndex].CustomName}");
+                
+                switch(TallyScope.Init())
+                {
+                    case -1:
+                        Dlog("CORE-TEMP-CRITICAL!");
+                        return false;
+
+                    case 0:
+                    //case 1:
+                        Dlog("Scan Complete!");
+                        return true;
+
+                    default:
+                        return true; // Clear bad scan
+                }
+            }
+        }
+        public class TallyPumper : Op
+        {
+            public SlotWork SlotPump;
+
+            public TallyPumper(Program prog, bool active = true) : base(prog, active)
+            {
+                Name = "PUMP";
+
+                SlotPump = new SlotWork(prog.ROOT, this);
+                SlotPump.MyJob = new Job(JobType.WORK, WorkType.PUMP);
+            }
+
+            public override bool HasWork()
+            {
+                WorkCount = Program.PumpRequests.Count;
+                return Program.PumpRequests.Count > 0;
+            }
+            public override bool Run()
+            {
+                base.Run();
+
+                if (Pumping())
+                {
+                    SlotPump.SIx = 0;
+                }
+
+                return true;
+            }
+            bool Pumping()
+            {
+                switch (SlotPump.Init())
+                {
+                    case -1:
+                        Dlog("OVER-HEAT!");
+                        return false;
+
+                    case 0:
+                    //case 1:
+                        Dlog("Pump workload complete!");
+                        return true;
+
+                    default:
+                        return true;
+                }
+            }
         }
         public class ProductionManager : Op
         {
@@ -2716,6 +2671,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         }
         public class Inventory : block
         {
+            public bool Buffered = false;
             public IMyInventoryOwner Owner;
             public List<Slot> Slots = new List<Slot>();
             public List<MyInventoryItem> Buffer = new List<MyInventoryItem>();
@@ -2737,6 +2693,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             {
                 Buffer.Clear();
                 PullInventory(this).GetItems(Buffer);
+                //Buffered = true;
                 return Buffer.Count > 0;
             }
 
@@ -2803,6 +2760,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 PullInventory(this).GetItems(Buffer);
                 PullInventory(this, false).GetItems(SecondBuffer);
                 Buffer.AddRange(SecondBuffer);
+                //Buffered = true;
                 return Buffer.Count > 0;
             }
         }
@@ -2846,8 +2804,9 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 bIsValue = isValue;
             }
         }
+        #endregion
 
-        /// Helpers
+        #region Helpers
         static bool CheckCandidate<T>(IMyTerminalBlock block, List<T> list) where T : block
         {
             if (block == null)
@@ -2925,8 +2884,9 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         {
             return (int)(ratio / panel.FontSize);
         }
+        #endregion
 
-        /// String builders
+        #region String builders
         static string NotationBundler(float value, int sigCount)
         {
             int sci = 0;
@@ -3024,8 +2984,9 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             output += filter.OUT == 1 ? ":+OUT:" : filter.OUT == 0 ? ":=OUT:" : ":-OUT:";
             return output;
         }
+        #endregion
 
-        /// Comparisons
+        #region Comparisons
         static bool ProfileCompare(FilterProfile profile, Slot slot, out MyFixedPoint target, bool dirIn = true)
         {
             target = 0;
@@ -3118,8 +3079,9 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 ((Req.IN == 1 && Req.InLink == null && PullInventory(Req.Inventory).IsConnectedTo(PullInventory(Can.Inventory, false))) ||
                 (Req.OUT == 1 && Req.OutLink == null && PullInventory(Req.Inventory, false).IsConnectedTo(PullInventory(Can.Inventory))));
         }
+        #endregion
 
-        /// Filter builders
+        #region Filter builders
         static void GenerateFilters(string combo, ref string[] id)
         {
             id[0] = "null";
@@ -3146,8 +3108,9 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             id[0] = type.TypeId.Replace("MyObjectBuilder_", "");
             id[1] = type.SubtypeId.Replace("Component", "");
         }
+        #endregion
 
-        /// Initializers
+        #region Initializers
         void BlockDetection()
         {
             DetectedGroups.Clear();
@@ -3254,8 +3217,9 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             SETUP = BUILT;
             AuxIndex = BUILT ? 0 : AuxIndex + BUILD_CAP;
         }
+        #endregion
 
-        /// Run Arguments
+        #region Run Arguments
         void AdjustSpeed(bool up = true)
         {
             if ((byte)RUN_FREQ > 0)
@@ -3369,8 +3333,9 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 Productions.Add(newProd);
             }
         }
+        #endregion
 
-        /// Main
+        #region RUNTIME
         void Debugging()
         {
             Debug.Append($"CallCount: {SEARCH_COUNT}");
@@ -3498,7 +3463,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         $"{ActiveOps[i].Name}:{ActiveOps[i].WorkIndex}/{ActiveOps[i].WorkCount}/{ActiveOps[i].WorkTotal}\n");
                     if (ActiveOps[i].CurrentWork != null)
                         EchoBuilder.Append(
-                            $"{ActiveOps[i].CurrentWork.Name}: {ActiveOps[i].CurrentWork.SIx}/{ActiveOps[i].CurrentWork.SearchCount}\n");
+                            $"{ActiveOps[i].CurrentWork.Name}: {ActiveOps[i].CurrentWork.SIx}/{ActiveOps[i].CurrentWork.MyJob.SearchCount}\n");
                 }
 
 
@@ -3527,6 +3492,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             LoadRecipes();
             BuildProductions(Me.CustomData);
 
+            RUN_FREQ = INIT_FREQ;
             Runtime.UpdateFrequency = RUN_FREQ;
         }
         public void Main(string argument, UpdateType updateSource)
@@ -3562,6 +3528,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         {
             Storage = Me.CustomData;
         }
+        #endregion
 
         #endregion
     }
