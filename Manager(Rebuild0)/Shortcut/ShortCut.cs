@@ -646,6 +646,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
             public MyInventoryItem SnapShot;
 
+            public bool Dead; // Procced by Scanner
             public bool SortQueued; // Called by Scanner
             public bool LinkQueued; // Called by Pumper
             public bool BrowseQueued; // Called by Linker
@@ -709,7 +710,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             }
             public bool Pump()
             {
-                if (Inventory == null)
+                if (Dead)
                     return false;
 
                 bool satisfied = true;
@@ -720,7 +721,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     {
                         satisfied = false;
                     }
-                    else if (InLink.Inventory == null)//.DEAD)
+                    else if (InLink.Dead)
                     {
                         InLink = null;
                         satisfied = false;
@@ -831,7 +832,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 if (Filter.OUT > -1)
                     Profile.Tallies[(int)TallyGroup.AVAILABLE].Remove(this);
 
-                Profile.Update(-remaining);
+                Profile.Update(- remaining);
                 Profile = null;
             }
 
@@ -1779,9 +1780,9 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         Dlog("OVER-HEAT!");
                         return false;
 
-                    case WorkResult.NONE_CONTINUE: // Didn't find any links, send to inventory browser?
+                    case WorkResult.NONE_CONTINUE: // Didn't find any links, send to inventory browser
 
-                        if (Queue[0].CheckUnLinked() && !Queue[0].BrowseQueued)
+                        if (Queue[0].OutLink == null && Queue[0].Filter.OUT == 1 && !Queue[0].BrowseQueued)
                         {
                             Dlog("Adding to browse queue...");
                             Program.inventoryBrowser.Queue.Add(Queue[0]);
@@ -1843,12 +1844,15 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             {
                 InventoryCheck = new InvWork(prog.ROOT, this);
                 InventoryCheck.Job = new JobMeta(JobType.FIND, WorkType.BROWSE, WorkResult.COMPLETE, WorkResult.NONE_CONTINUE);
+
+                Name = "INVENTORY BROWSE";
             }
 
             public override void Run()
             {
                 base.Run();
 
+                InventoryCheck.Job.Requester = Queue[0];
                 InventoryCheck.SetSearchCount();
 
                 if (Browse())
@@ -1967,7 +1971,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 Name = "PUMP";
 
                 SlotPump = new SlotWork(prog.ROOT, this);
-                SlotPump.Job = new JobMeta(JobType.WORK, WorkType.PUMP);
+                SlotPump.Job = new JobMeta(JobType.WORK, WorkType.PUMP, WorkResult.COMPLETE, WorkResult.NONE_CONTINUE);
             }
 
             public override bool HasWork()
@@ -1978,6 +1982,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public override void Run()
             {
                 base.Run();
+
+                SlotPump.SetSearchCount();
 
                 if (Pumping())
                 {
@@ -2025,7 +2031,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 SlotMatch.Job = new JobMeta(JobType.FIND, WorkType.BROWSE, WorkResult.FIND_SLOT, WorkResult.NONE_CONTINUE, TallyGroup.AVAILABLE);
                 SlotCheck.Chain = SlotMatch;
 
-                Name = "BROWSE";
+                Name = "ITEM BROWSE";
             }
 
             public override bool HasWork()
