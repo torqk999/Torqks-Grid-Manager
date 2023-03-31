@@ -311,7 +311,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         List<TallyItemType> AllItemTypes = new List<TallyItemType>();
 
         List<Inventory> PullRequests = new List<Inventory>();
-        List<Slot> PushRequests = new List<Slot>();
+        List<Slot> MoveRequests = new List<Slot>();
 
         DisplayManager DisplayMan;
         TallyScanner Scanner;
@@ -685,22 +685,23 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 if (CheckDead())
                     return;
 
-                MyFixedPoint inTarget, outTarget;
+                MyFixedPoint? inTarget, outTarget;
 
                 bool inAllowed = ProfileCompare(Inventory.Profile, SnapShot.Type, out inTarget);
                 bool outAllowed = ProfileCompare(Inventory.Profile, SnapShot.Type, out outTarget, false);
                 bool wasPushing = Filter == null ? false : Filter.IsPushing();
 
                 Filter = new Filter(Program.ROOT, SnapShot.Type,
-                    outTarget < inTarget ? outTarget : inTarget,  // Prioritize smaller value
+                    MaximumReturn(inTarget, outTarget),
+                    //outTarget < inTarget ? outTarget : inTarget,  // Prioritize smaller value
                     inAllowed ? (Inventory.Profile.FILL ? 1 : 0) : -1,
-                    outAllowed ? (Inventory.Profile.EMPTY ? 1 : 0) : -1);
+                    outAllowed ? (Inventory.Profile.EMPTY ? 1 : 0) : -1); ;
 
                 if (!wasPushing && Filter.IsPushing())
-                    Program.PushRequests.Add(this);
+                    Program.MoveRequests.Add(this);
 
                 if (wasPushing && !Filter.IsPushing())
-                    Program.PushRequests.Remove(this);
+                    Program.MoveRequests.Remove(this);
             }
             bool ProfileUpdate()
             {
@@ -762,6 +763,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     }
                     else if (!TallyTransfer(InLink, this))
                     {
+                        InLink = null;
                         satisfied = false;
                     }
                     else
@@ -785,6 +787,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                     else if (!TallyTransfer(this, OutLink))
                     {
+                        OutLink = null;
                         satisfied = false;
                     }
                     else
@@ -903,7 +906,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         public class Filter : Root
         {
             public string[] ItemID = new string[2];
-            public MyFixedPoint Target;
+            public MyFixedPoint? Target;
             public int IN;
             public int OUT;
 
@@ -913,7 +916,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             }
             Filter(RootMeta meta, MyFixedPoint? target = null, int @in = 0, int @out = 0) : base(meta)
             {
-                Target = target.HasValue ? target.Value : 0;
+                Target = target;
                 IN = @in;
                 OUT = @out;
             }
@@ -1121,7 +1124,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                 // OVERHAUL PRODUCTION! REMOVE FOREACH LOOPS! //
 
-                if (Current >= Filter.Target)
+                if (!Filter.Target.HasValue || Current >= Filter.Target)
                 {
                     // Add excess que removal logic here later
                     return true;
@@ -1154,7 +1157,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     existingQueAmount += item.Amount;
 
                 MyFixedPoint projectedTotal = Current + existingQueAmount;
-                MyFixedPoint projectedOverage = Filter.Target - projectedTotal;
+                MyFixedPoint projectedOverage = Filter.Target.Value - projectedTotal;
 
                 if (projectedOverage >= 0)
                 {
@@ -1192,7 +1195,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public Op MyOp;
             public Work Chain;
             public JobMeta Job;
-            public MyFixedPoint DestinationTarget;
+            public MyFixedPoint? DestinationTarget;
             public string Name;
             public int SIx = 0;
 
@@ -1502,7 +1505,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         break;
 
                     case WorkType.MOVE:
-                        SlotList = Program.PushRequests;
+                        SlotList = Program.MoveRequests;
                         break;
 
                     case WorkType.BROWSE:
@@ -1539,7 +1542,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                     ||
 
-                    (Job.Requester is Slot && SlotCompare((Slot)Job.Requester, SlotList[SIx]))
+                    (Job.Requester is Slot && SlotCompare((Slot)Job.Requester, SlotList[SIx], out DestinationTarget))
 
                     );
             }
@@ -1568,7 +1571,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         return SlotLink();
 
                     case WorkType.BROWSE:
-                        return 
+                        return SlotBrowse();
 
                     default:
                         return false;
@@ -1697,7 +1700,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             {
                 if (SlotList[SIx].CheckDead())
                 {
-                    Dlog("Dead Slot, removing from push requests...");
+                    Dlog("Dead Slot, removing from move requests...");
                     SlotList.RemoveAt(SIx);
                     Job.SearchCount = SlotList.Count;
                     SIx--;
@@ -1723,14 +1726,23 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     }
                     else
                         Dlog("Push Complete!");
+
+                    return false; // Keep Working!
                 }
-                else if (SlotList[SIx].Filter.OUT == 1 && !SlotList[SIx].DumpQueued) // Only handle out-bound, let browser find items to pull
+                if (SlotList[SIx].Filter.OUT == 1 && !SlotList[SIx].DumpQueued) // Only handle out-bound, let browser find items to pull
                 {
                     Dlog("Dumping Slot!");
                     SlotList[SIx].DumpQueued = true;
                     Program.Dumper.Queue.Add(SlotList[SIx]);
                 }
                 return false; // Keep Working!
+            }
+            bool SlotBrowse()
+            {
+                if (!Compare())
+                    return false; // Keep browsing!
+
+                return true;
             }
         }
 
@@ -1900,7 +1912,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         Dlog("OVER-HEAT!");
                         return false;
 
-                    case WorkResult.NONE_CONTINUE: // Didn't find any links, send to inventory browser
+                    case WorkResult.NONE_CONTINUE: // Link(s) missing, send to dumper if needed
                         Dlog("Links missing!");
 
                         if (Queue[0].OutLink == null && Queue[0].Filter.OUT == 1 && !Queue[0].DumpQueued)
@@ -2104,8 +2116,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
             public override bool HasWork()
             {
-                WorkCount = Program.PushRequests.Count;
-                return Program.PushRequests.Count > 0;
+                WorkCount = Program.MoveRequests.Count;
+                return Program.MoveRequests.Count > 0;
             }
             public override void Run()
             {
@@ -2140,24 +2152,24 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public TypeWork TypeFind;
             public SubWork SubFind;
             public SlotWork SlotMatch;
-            public SlotWork SlotFind;
+            public SlotWork SlotBrowse;
 
             public ItemBrowser(Program prog, bool active = true) : base(prog, active)
             {
                 TypeFind = new TypeWork(prog.ROOT, this);
-                TypeFind.Job = new JobMeta(JobType.FIND, WorkType.NONE, WorkResult.FIND_TYPE, WorkResult.NONE_CONTINUE);
+                TypeFind.Job = new JobMeta(JobType.FIND, WorkType.NONE, WorkResult.NONE_CONTINUE, WorkResult.NONE_CONTINUE);
 
                 SubFind = new SubWork(prog.ROOT, this);
-                SubFind.Job = new JobMeta(JobType.FIND, WorkType.NONE, WorkResult.FIND_SUB, WorkResult.NONE_CONTINUE);
+                SubFind.Job = new JobMeta(JobType.FIND, WorkType.NONE, WorkResult.NONE_CONTINUE/*FIND_SUB*/, WorkResult.NONE_CONTINUE);
                 TypeFind.Chain = SubFind;
 
                 SlotMatch = new SlotWork(prog.ROOT, this);
-                SlotMatch.Job = new JobMeta(JobType.MATCH, WorkType.CHECK, WorkResult.MATCH_SLOT, WorkResult.NONE_CONTINUE);
+                SlotMatch.Job = new JobMeta(JobType.MATCH, WorkType.CHECK, WorkResult.NONE_CONTINUE, WorkResult.NONE_CONTINUE);
                 SubFind.Chain = SlotMatch;
 
-                SlotFind = new SlotWork(prog.ROOT, this);
-                SlotFind.Job = new JobMeta(JobType.FIND, WorkType.BROWSE, WorkResult.FIND_SLOT, WorkResult.NONE_CONTINUE, TallyGroup.AVAILABLE);
-                SlotMatch.Chain = SlotFind;
+                SlotBrowse = new SlotWork(prog.ROOT, this);
+                SlotBrowse.Job = new JobMeta(JobType.WORK, WorkType.BROWSE, WorkResult.FIND_SLOT, WorkResult.NONE_CONTINUE, TallyGroup.AVAILABLE);
+                SlotMatch.Chain = SlotBrowse;
 
                 Name = "BROWSE";
             }
@@ -2181,7 +2193,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     TypeFind.SIx = 0;
                     SubFind.SIx = 0;
                     SlotMatch.SIx = 0;
-                    SlotFind.SIx = 0;
+                    SlotBrowse.SIx = 0;
                     Next();
                 }
             }
@@ -2202,10 +2214,10 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         return false;
 
                     case WorkResult.NONE_CONTINUE:
-                        Dlog("Nothing Found!");
+                        Dlog("Nothing Moved!");
                         return true;
 
-                    case WorkResult.FIND_TYPE:
+                    /*case WorkResult.FIND_TYPE:
                         Dlog("Type-only Found!");
                         return true;
 
@@ -2215,13 +2227,16 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                     case WorkResult.MATCH_SLOT:
                         Dlog("Slot-match-only present!");
-                        return true;
+                        return true;*/
 
                     case WorkResult.FIND_SLOT:
-                        Dlog($"Eligable Slot Found! Requester is {((SlotFind.Job.Requester is Inventory) ? "Inventory" : (SlotFind.Job.Requester is Slot) ? "Slot" : "Unknown")}");
+                        Dlog("Move Success!");
+                        return true;
+
+                        Dlog($"Eligable Slot Found! Requester is {((SlotBrowse.Job.Requester is Inventory) ? "Inventory" : (SlotBrowse.Job.Requester is Slot) ? "Slot" : "Unknown")}");
                         browser.Pulled =
-                            SlotFind.Job.Requester == browser ? ForceTransfer(browser, SlotFind.DestinationTarget, SlotFind.Current()) :
-                            (SlotFind.Job.Requester is Slot) ? TallyTransfer((Slot)SlotFind.Job.Requester, SlotFind.Current()) : false;
+                            SlotBrowse.Job.Requester == browser ? ForceTransfer(browser, SlotBrowse.DestinationTarget, SlotBrowse.Current()) :
+                            (SlotBrowse.Job.Requester is Slot) ? TallyTransfer((Slot)SlotBrowse.Job.Requester, SlotBrowse.Current()) : false;
                         Dlog($"Transfer success: {browser.Pulled}");
                         return true;
 
@@ -2586,7 +2601,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                             break;
 
                         case ScreenMode.PUSH:
-                            AppendLine(StrForm.HEADER, $"[Pushing ({Program.PushRequests.Count})]");
+                            AppendLine(StrForm.HEADER, $"[Pushing ({Program.MoveRequests.Count})]");
                             PushBuilder();
                             break;
                     }
@@ -3006,7 +3021,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
             void PushBuilder()
             {
-                foreach (Slot request in Program.PushRequests)
+                foreach (Slot request in Program.MoveRequests)
                 {
                     AppendLine(StrForm.LINK, RawPush(request, CharCount));
                 }
@@ -3046,7 +3061,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             }
             void TallyBuilder()
             {
-                MyFixedPoint blah;
+                MyFixedPoint? blah;
                 foreach (TallyItemType type in Program.AllItemTypes)
                 {
                     if (!ProfileCompare(Profile, type.TypeId, out blah))
@@ -3314,6 +3329,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public Producer(BlockMeta meta) : base(meta)
             {
                 ProdBlock = (IMyProductionBlock)meta.Block;
+                ProdBlock.UseConveyorSystem = Profile.ACTIVE_CONVEYOR;
             }
         }
         public class Assembler : Producer
@@ -3324,8 +3340,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             {
                 AssemblerBlock = (IMyAssembler)meta.Block;
                 AssemblerBlock.CooperativeMode = false;
-                Profile.CLEAN = true;
-                //Profile.RESIDE = true;
+                //Profile.CLEAN = true;
             }
         }
         public class Refinery : Producer
@@ -3335,9 +3350,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public Refinery(BlockMeta meta) : base(meta)
             {
                 RefineBlock = (IMyRefinery)meta.Block;
-                //Profile.AUTO_REFINE = true;
-                //Profile.RESIDE = true;
-                RefineBlock.UseConveyorSystem = Profile.ACTIVE_CONVEYOR;
+                //RefineBlock.UseConveyorSystem = Profile.ACTIVE_CONVEYOR;
             }
 
             public override bool FillCheck()
@@ -3381,7 +3394,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             group.GetBlocks(blocks);
             return true;
         }
-        static bool ForceTransfer(Inventory target, MyFixedPoint targetAllowed, Slot source)
+        static bool ForceTransfer(Inventory target, MyFixedPoint? targetAllowed, Slot source)
         {
             target.Dlog("Performing Force Transfer...");
             MyFixedPoint? allowed = AllowableReturn(targetAllowed, source);
@@ -3424,20 +3437,21 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             catch { return false; }
         }
 
-        static MyFixedPoint MaximumReturn(MyFixedPoint IN, MyFixedPoint OUT)
+        static MyFixedPoint? MaximumReturn(MyFixedPoint? IN, MyFixedPoint? OUT)
         {
-            return IN == 0 ? OUT : OUT == 0 ? IN : IN < OUT ? IN : OUT;
+            return !IN.HasValue ? OUT : !OUT.HasValue ? IN : IN < OUT ? IN : OUT;
         }
         static MyFixedPoint? AllowableReturn(Slot dest, Slot moving)
         {
             return AllowableReturn(dest.Filter.Target > 0 ? dest.Filter.Target - dest.SnapShot.Amount : 0, moving);
         }
-        static MyFixedPoint? AllowableReturn(MyFixedPoint destTarget, Slot moving)
+        static MyFixedPoint? AllowableReturn(MyFixedPoint? destTarget, Slot moving)
         {
-            MyFixedPoint allow = moving.Filter.Target > 0 ? moving.SnapShot.Amount - moving.Filter.Target : moving.CheckLinkable() /*Inventory.Profile.RESIDE*/ ? moving.SnapShot.Amount - 1 : 0;
+            MyFixedPoint allow = moving.Filter.Target.HasValue ? moving.SnapShot.Amount - moving.Filter.Target.Value : moving.CheckLinkable() /*Inventory.Profile.RESIDE*/ ? moving.SnapShot.Amount - 1 : 0;
             MyFixedPoint? output = MaximumReturn(destTarget, allow);
-            return output.Value != 0 ? output.Value < 0 ? 0 : output : null;
+            return output.HasValue ? output.Value < 0 ? 0 : output : null;
         }
+
         static ProdMeta? ReadRecipe(string recipe, RootMeta meta)
         {
             try
@@ -3452,16 +3466,16 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         }
         static int MonoSpaceChars(IMyTextPanel panel)
         {
-            return (int)(/*ratio / panel.FontSize*/ panel.SurfaceSize.X / (panel.FontSize * MONO_RATIO[0]));
+            return (int)(panel.SurfaceSize.X / (panel.FontSize * MONO_RATIO[0]));
         }
         static int MonoSpaceLines(IMyTextPanel panel)
         {
-            return (int)(/*ratio / panel.FontSize*/ panel.SurfaceSize.Y / (panel.FontSize * MONO_RATIO[1]));
+            return (int)(panel.SurfaceSize.Y / (panel.FontSize * MONO_RATIO[1]));
         }
         #endregion
 
         #region Comparisons
-        static bool ProfileCompare(Inventory destination, Slot source, out MyFixedPoint target, bool dirIn = true)
+        static bool ProfileCompare(Inventory destination, Slot source, out MyFixedPoint? target, bool dirIn = true)
         {
             target = 0;
 
@@ -3474,20 +3488,20 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             return dirIn ? source.Filter.OUT > -1 && ProfileCompare(destination.Profile, source.SnapShot.Type, out target) :
                            source.Filter.IN > -1 && ProfileCompare(destination.Profile, source.SnapShot.Type, out target, false);
         }
-        static bool ProfileCompare(FilterProfile profile, MyItemType type, out MyFixedPoint target, bool dirIn = true)
+        static bool ProfileCompare(FilterProfile profile, MyItemType type, out MyFixedPoint? target, bool dirIn = true)
         {
             return ProfileCompare(profile, type.TypeId, type.SubtypeId, out target, dirIn);
         }
-        static bool ProfileCompare(FilterProfile profile, string type, out MyFixedPoint target, bool dirIn = true)
+        static bool ProfileCompare(FilterProfile profile, string type, out MyFixedPoint? target, bool dirIn = true)
         {
             return ProfileCompare(profile, type, "any", out target, dirIn);
         }
-        static bool ProfileCompare(FilterProfile profile, out MyFixedPoint target, string sub, bool dirIn = true)
+        static bool ProfileCompare(FilterProfile profile, out MyFixedPoint? target, string sub, bool dirIn = true)
         {
             return ProfileCompare(profile, "any", sub, out target, dirIn);
         }
 
-        static bool ProfileCompare(FilterProfile profile, string type, string sub, out MyFixedPoint target, bool dirIn = true)
+        static bool ProfileCompare(FilterProfile profile, string type, string sub, out MyFixedPoint? target, bool dirIn = true)
         {
             target = 0;
             if (profile == null)
@@ -3519,7 +3533,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     !dirIn)
                     allow = false;
 
-                target = (filter.Target == 0) ? target : filter.Target;
+                target = !filter.Target.HasValue ? target : filter.Target;
             }
 
             allow = match ? allow : auto;
@@ -3563,8 +3577,10 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
             return source.IndexOf(target, StringComparison.OrdinalIgnoreCase) > -1;
         }
-        static bool SlotCompare(Slot Req, Slot Can)
+        static bool SlotCompare(Slot Req, Slot Can, out MyFixedPoint? allowable)
         {
+            allowable = AllowableReturn(Req, Can);
+
             return
                 Req != Can && Req.SnapShot.Type == Can.SnapShot.Type &&
                 //A.Inventory == B.Inventory || //A.Inventory == null || B.Inventory == null || // Let them amalgamate???
@@ -3738,7 +3754,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             AllItemTypes.Clear();
 
             PullRequests.Clear();
-            PushRequests.Clear();
+            MoveRequests.Clear();
         }
         void RunSystemBuild()
         {
