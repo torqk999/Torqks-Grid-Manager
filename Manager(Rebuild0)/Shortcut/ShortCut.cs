@@ -237,17 +237,30 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         const string CustomSig = "[CPY]";
 
         const float CLEAN_MIN = .8f;
-        const float FULL_MIN = 0.98f;
-        const float EMPTY_MAX = 0.02f;
+        const float FULL_MIN = 0.95f;
+        const float EMPTY_MAX = 0.05f;
 
         const int DefScrollDelay = 1;
         const int DefSigCount = 2;
         const int SEARCH_CAP = 30;
         const int BUILD_CAP = 20;
+        static int[] MONO_RATIO = {20, 30};
 
         static UpdateFrequency INIT_FREQ = UpdateFrequency.Update1;
-        static readonly int[] DefScreenRatio = { 25, 15 };
+        //static readonly int[] DefScreenRatio = { 25, 15 };
         /// WARNING!! DO NOT GO FURTHER USER!! ///
+
+        #region DEFAULTS
+
+        const string RefineryDefault =
+            "! -in +out\n" +
+            "ore: +in -out\n" +
+            "&reside\n" +
+            "&convey\n" +
+            "&fill\n" +
+            "&empty";
+
+        #endregion
 
         #region LOGIC 
         UpdateFrequency RUN_FREQ;
@@ -258,6 +271,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         bool DETECTED;
         bool BUILT;
         bool SETUP;
+        bool SCANNED;
+        bool SWEPT;
 
         static readonly char[] EchoLoop =
         {
@@ -313,7 +328,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         List<Op> AllOps;
         List<Op> InactiveOps = new List<Op>();
         List<Op> ActiveOps = new List<Op>();
-        
+
         void SetupOps()
         {
             DisplayMan = new DisplayManager(this);
@@ -359,6 +374,9 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     ActiveOps.Remove(ActiveOps[i]);
                 }
 
+            if (SCANNED && !Sorter.HasWork())
+                SWEPT = true;
+
             if (!NextCurrentOp())
                 return;
 
@@ -395,6 +413,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             RESOURCE,
             STATUS,
             FILTER,
+            LINK,
             PRODUCTION
         }
         public enum ScreenMode
@@ -421,6 +440,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             ALL,
             REQUEST,
             STORAGE,
+            LINKABLE,
             AVAILABLE,
             LOCKED,
         }
@@ -468,7 +488,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             //NONE = 0,
             NONE_CONTINUE = 0,
             COMPLETE = 1,
-            
+
             //MATCH_NONE = 0,
             //MATCH_TYPE = 2,
             //MATCH_SUB = 3,
@@ -497,6 +517,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             {
                 Program.Echo("Root Setup");
             }
+            
             public void Dlog(string nextLine)
             {
                 Program.Debug.Append($"{nextLine}\n");
@@ -577,7 +598,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public Root Requester;
             public string TypeCompare;
             public string SubCompare;
-            public MyItemType? ItemMatch;
+            public MyItemType? TypeMatch;
+            public Slot SlotMatch;
 
             public int SearchCount;
             public int WIxA;
@@ -601,11 +623,12 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 Success = success;
                 Fail = fail;
                 TargetGroup = target;
-                
+
                 Requester = null;
                 TypeCompare = null;
                 SubCompare = null;
-                ItemMatch = null;
+                TypeMatch = null;
+                SlotMatch = null;
 
                 WIxA = 0;
                 WIxB = 0;
@@ -625,9 +648,10 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public void CopyJobMeta(JobMeta source)
             {
                 TargetGroup = source.TargetGroup;
-                Requester = source.Requester;
+                Requester = source.SlotMatch == null ? source.Requester : source.SlotMatch;
                 TypeCompare = source.TypeCompare;
                 SubCompare = source.SubCompare;
+                //SlotMatch = source.SlotMatch;
             }
         }
         #endregion
@@ -646,7 +670,6 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
             public MyInventoryItem SnapShot;
 
-            public bool Dead; // Procced by Scanner
             public bool SortQueued; // Called by Scanner
             public bool LinkQueued; // Called by Pumper
             public bool BrowseQueued; // Called by Linker
@@ -660,18 +683,25 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             }
             void SlotFilter()
             {
-                if (Inventory == null || Inventory.Profile == null)
+                if (CheckDead())
                     return;
 
                 MyFixedPoint inTarget, outTarget;
 
                 bool inAllowed = ProfileCompare(Inventory.Profile, SnapShot.Type, out inTarget);
                 bool outAllowed = ProfileCompare(Inventory.Profile, SnapShot.Type, out outTarget, false);
+                bool wasPumping = Filter == null ? false : Filter.IsPumping();
 
                 Filter = new Filter(Program.ROOT, SnapShot.Type,
                     outTarget < inTarget ? outTarget : inTarget,  // Prioritize smaller value
                     inAllowed ? (Inventory.Profile.FILL ? 1 : 0) : -1,
                     outAllowed ? (Inventory.Profile.EMPTY ? 1 : 0) : -1);
+
+                if (!wasPumping && Filter.IsPumping())
+                    Program.PumpRequests.Add(this);
+
+                if (wasPumping && !Filter.IsPumping())
+                    Program.PumpRequests.Remove(this);
             }
             bool ProfileUpdate()
             {
@@ -710,7 +740,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             }
             public bool Pump()
             {
-                if (Dead)
+                if (CheckBroken())
                     return false;
 
                 bool satisfied = true;
@@ -721,7 +751,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     {
                         satisfied = false;
                     }
-                    else if (InLink.Dead)
+                    else if (InLink.CheckBroken())
                     {
                         InLink = null;
                         satisfied = false;
@@ -736,7 +766,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     }
                 }
 
-                else if (Filter.OUT == 1)
+                if (Filter.OUT == 1)
                 {
                     if (OutLink == null)
                     {
@@ -769,7 +799,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                     return false;
                 }
-                    
+
                 MyInventoryItem? check = Inventory.PullIndex(Index);
                 if (!check.HasValue)
                 {
@@ -798,6 +828,14 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                 return false;
             }
+            public bool CheckDead()
+            {
+                return Inventory == null;
+            }
+            public bool CheckBroken()
+            {
+                return Inventory == null || Profile == null;
+            }
             public void SyncTallyToProfile(TallyItemSub profile)
             {
                 if (profile == null)
@@ -812,8 +850,14 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 if (Filter.IN == 0 && Filter.OUT == 0)
                     Profile.Tallies[(int)TallyGroup.STORAGE].Add(this);
                 if (Filter.IN == 1 || Filter.OUT == 1)
-                    Profile.Tallies[(int)TallyGroup.REQUEST].Add(this);
-                if (Filter.OUT > -1)
+                {
+                    if (Inventory is Producer)
+                        Profile.Tallies[(int)TallyGroup.LINKABLE].Add(this);
+                    else
+                        Profile.Tallies[(int)TallyGroup.REQUEST].Add(this);
+                }
+
+                if (Filter.IN > -1 || Filter.OUT > -1)
                     Profile.Tallies[(int)TallyGroup.AVAILABLE].Add(this);
             }
             private void UnsyncFromProfile(MyFixedPoint remaining)
@@ -829,10 +873,10 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     Profile.Tallies[(int)TallyGroup.STORAGE].Remove(this);
                 if (Filter.IN == 1 || Filter.OUT == 1)
                     Profile.Tallies[(int)TallyGroup.REQUEST].Remove(this);
-                if (Filter.OUT > -1)
+                if (Filter.IN > -1 || Filter.OUT > -1)
                     Profile.Tallies[(int)TallyGroup.AVAILABLE].Remove(this);
 
-                Profile.Update(- remaining);
+                Profile.Update(-remaining);
                 Profile = null;
             }
 
@@ -850,21 +894,25 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public int IN;
             public int OUT;
 
-            Filter(RootMeta meta, MyFixedPoint target, int @in, int @out) : base(meta)
+            public bool IsPumping()
             {
-                Target = target;
+                return IN == 1 || OUT == 1;
+            }
+            Filter(RootMeta meta, MyFixedPoint? target = null, int @in = 0, int @out = 0) : base(meta)
+            {
+                Target = target.HasValue ? target.Value : 0;
                 IN = @in;
                 OUT = @out;
             }
-            public Filter(RootMeta meta, string combo, MyFixedPoint target, int IN = 0, int OUT = 0) : this(meta, target, IN, OUT)
+            public Filter(RootMeta meta, string combo, MyFixedPoint? target, int IN = 0, int OUT = 0) : this(meta, target, IN, OUT)
             {
                 GenerateFilters(combo, ref ItemID);
             }
-            public Filter(RootMeta meta, MyItemType type, MyFixedPoint target, int IN = 0, int OUT = 0) : this(meta, target, IN, OUT)
+            public Filter(RootMeta meta, MyItemType type, MyFixedPoint? target, int IN = 0, int OUT = 0) : this(meta, target, IN, OUT)
             {
                 GenerateFilters(type, ref ItemID);
             }
-            public Filter(RootMeta meta, MyDefinitionId id, MyFixedPoint target, int IN = 0, int OUT = 0) : this(meta, target, IN, OUT)
+            public Filter(RootMeta meta, MyDefinitionId id, MyFixedPoint? target, int IN = 0, int OUT = 0) : this(meta, target, IN, OUT)
             {
                 GenerateFilters(id, ref ItemID);
             }
@@ -879,7 +927,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public bool EMPTY;
             public bool RESIDE;
             public bool CLEAN;
-            public bool AUTO_REFINE;
+            public bool ACTIVE_CONVEYOR;
 
             public FilterProfile(RootMeta meta, bool defIn = true, bool defOut = true, bool defFill = false, bool defEmpty = false) : base(meta)
             {
@@ -919,8 +967,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         if (Contains(nextline, "clean"))
                             CLEAN = !nextline.Contains("-");
 
-                        if (Contains(nextline, "auto"))
-                            AUTO_REFINE = !nextline.Contains("-");
+                        if (Contains(nextline, "convey"))
+                            ACTIVE_CONVEYOR = !nextline.Contains("-");
 
                         continue;
                     }
@@ -946,7 +994,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 bool bDefault = false;
                 bool bIn = true;
                 bool bOut = true;
-                MyFixedPoint target = 0;
+                MyFixedPoint? target = null;
 
                 if (lineblocks[0].Contains(":")) // Filter insignia
                 {
@@ -1004,6 +1052,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         }
         public class TallyItemSub : Root
         {
+            public MyFixedPoint? TargetGoal;
             public MyFixedPoint CurrentTotal;
             public MyFixedPoint HighestReached;
             public MyItemType Type;
@@ -1190,14 +1239,16 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     }
                 }
 
-                if (Job.JobType == JobType.MATCH)
+                if (Job.JobType == JobType.MATCH && Chain != null)
                 {
-                    SIx = 0; // Special Condition?
+                    //SIx = 0; // Special Condition?
 
-                    if (result == WorkResult.NONE_CONTINUE && Chain != null)
-                    {
+                    //if (result == WorkResult.NONE_CONTINUE && Chain != null)
+
+                    //if (result > 0)
+                    //{
                         return ChainCall();
-                    }
+                    //}
                 }
 
                 Dlog($"Peek Result: {result}");
@@ -1212,7 +1263,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                 if (DeadSlot())
                     return WorkResult.DEAD_SLOT;
-                
+
                 switch (Job.JobType)
                 {
                     case JobType.FIND:
@@ -1231,12 +1282,12 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                                         Dlog($"Chain Match! Keep searching...");
                                         return Job.Fail; // Special condition?
                                     }
-                                        
+
                                     Dlog($"ChainResult: {chainResult}");
                                     return chainResult;
-                                } 
+                                }
                             }
-                            
+
                             return Job.Success;
                         }
                         return Job.Fail;
@@ -1276,7 +1327,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             {
                 InventoryList = null;
 
-                switch(Job.WorkType)
+                switch (Job.WorkType)
                 {
                     case WorkType.BROWSE:
                         InventoryList = Program.Inventories;
@@ -1296,7 +1347,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             {
                 Dlog($"Checking inventory: {InventoryList[SIx].CustomName}");
 
-                return ProfileCompare(InventoryList[SIx], (Slot)Job.Requester, out DestinationTarget);
+                return Job.Requester is Slot && ProfileCompare(InventoryList[SIx], (Slot)Job.Requester, out DestinationTarget);
             }
             /*public override bool DoWork()
             {
@@ -1310,7 +1361,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public Inventory Current()
             {
                 return InventoryList == null ? null : InventoryList[SIx];
-            } 
+            }
         }
         public class ProdWork : Work
         {
@@ -1388,7 +1439,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 Chain.Job.CopyJobMeta(Job);
 
                 if (Chain.Job.JobType == JobType.MATCH)
-                    Chain.Job.ItemMatch = Current().Type;
+                    Chain.Job.TypeMatch = Current().Type;
 
                 Chain.Job.WIxA = Job.WIxA;
                 Chain.Job.WIxB = SIx;
@@ -1416,12 +1467,18 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 {
                     case WorkType.CHECK:
                     case WorkType.SCAN:
-                        inv = (Inventory)Job.Requester;
-                        SlotList = inv.Slots;
+                        if (Job.Requester is Inventory)
+                        {
+                            inv = (Inventory)Job.Requester;
+                            SlotList = inv.Slots;
+                        }
                         break;
 
                     case WorkType.LINK:
-                        SlotList = ((Slot)Job.Requester).Profile.Tallies[(int)Job.TargetGroup];
+                        if (Job.Requester is Slot && ((Slot)Job.Requester).Profile != null)
+                        {
+                            SlotList = ((Slot)Job.Requester).Profile.Tallies[(int)Job.TargetGroup];
+                        }
                         break;
 
                     case WorkType.PUMP:
@@ -1445,6 +1502,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                 else
                     Job.SearchCount = SlotList.Count;
+
+                Dlog($"SearchCount: {Job.SearchCount}");
             }
             public override bool Compare()
             {
@@ -1452,11 +1511,15 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                 return (
 
-                    ( Job.Requester is Inventory && ProfileCompare((Inventory)Job.Requester, SlotList[SIx], out DestinationTarget) )
+                    /*(Job.SlotMatch != null && SlotCompare((Job.SlotMatch
+
+                    ||*/
+
+                    (Job.Requester is Inventory && ProfileCompare((Inventory)Job.Requester, SlotList[SIx], out DestinationTarget))
 
                     ||
 
-                    ( Job.Requester is Slot && SlotCompare((Slot)Job.Requester, SlotList[SIx]) )
+                    (Job.Requester is Slot && SlotCompare((Slot)Job.Requester, SlotList[SIx]))
 
                     );
             }
@@ -1464,7 +1527,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             {
                 Dlog($"Matching slot: {SlotList[SIx].SnapShot.Type.SubtypeId}");
 
-                return Job.ItemMatch == SlotList[SIx].SnapShot.Type;
+                Job.SlotMatch = Job.TypeMatch == SlotList[SIx].SnapShot.Type ? SlotList[SIx] : null;
+                return Job.SlotMatch != null;
             }
 
             public override bool DoWork()
@@ -1484,7 +1548,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         return SlotLink();
 
                     //case WorkType.PULL:
-                        //return SlotPull();
+                    //return SlotPull();
 
                     default:
                         return false;
@@ -1510,6 +1574,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             bool SlotLink()
             {
                 Slot queued = (Slot)Job.Requester;
+                Slot match = SlotList[SIx];
+
                 if (queued == null)
                 {
                     Dlog("null Queued!");
@@ -1522,14 +1588,21 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     return true;
                 }
 
-                Slot match = SlotList[SIx];
                 if (match == null)
                 {
                     Dlog("null Match!");
                     return false;
                 }
 
-                Dlog($"Queued Tally for linking: {queued.SnapShot.Type.SubtypeId}\n");
+                if (queued == match)
+                {
+                    Dlog("Looking at self!");
+                    return false;
+                }
+
+                //if ()
+
+                Dlog($"Queued Tally for linking: {queued.SnapShot.Type.SubtypeId}");
 
                 if (queued.Filter.IN == 1 &&
                     queued.InLink == null &&
@@ -1540,10 +1613,11 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     Dlog($"In Link Made!");
 
                     queued.InLink = match;
+                    match.OutLink = queued;
                 }
 
                 if (queued.Filter.OUT == 1 &&
-                    queued.InLink == null &&
+                    queued.OutLink == null &&
                     match.Filter.IN > -1 &&
                     (match.Inventory.Profile.RESIDE ||
                         !match.Inventory.IsFull()))
@@ -1551,6 +1625,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     Dlog($"Out Link Made!");
 
                     queued.OutLink = match;
+                    match.InLink = queued;
                 }
 
                 return !queued.CheckUnLinked();
@@ -1571,8 +1646,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     Dlog("Adding slot");
                     Slot sloot = new Slot(Program.ROOT, inv, (MyInventoryItem)check, SIx);
 
-                    if (sloot.Filter.IN == 1 || sloot.Filter.OUT == 1)
-                        Program.PumpRequests.Add(sloot);
+                    //if (sloot.Filter.IN == 1 || sloot.Filter.OUT == 1)
+                    //    Program.PumpRequests.Add(sloot);
 
                     inv.Slots.Add(sloot);
                 }
@@ -1616,12 +1691,13 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 return false; // Keep Working!
             }
         }
-       
+
 
         public class Op : Root
         {
             public string Name;
             public bool Active;
+            //public bool Swept;
             public Work CurrentWork;
 
             public int
@@ -1632,6 +1708,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public Op(Program prog, bool active) : base(prog.ROOT)
             {
                 Active = active;
+                //Swept = false;
             }
 
             public void Toggle()
@@ -1668,7 +1745,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public override bool HasWork()
             {
                 WorkCount = Queue.Count;
-                return WorkCount > 0;
+                return WorkCount > 0 ;
             }
         }
         public class TallySorter : QueueOp
@@ -1751,7 +1828,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 Name = "LINK";
 
                 SlotLink = new SlotWork(prog.ROOT, this);
-                SlotLink.Job = new JobMeta(JobType.WORK, WorkType.LINK, WorkResult.COMPLETE, WorkResult.NONE_CONTINUE, TallyGroup.AVAILABLE);
+                SlotLink.Job = new JobMeta(JobType.WORK, WorkType.LINK, WorkResult.COMPLETE, WorkResult.NONE_CONTINUE, TallyGroup.LINKABLE);
             }
             public override void Run()
             {
@@ -1768,7 +1845,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             }
             bool Link()
             {
-                Dlog($"Linking TallySlot: {Queue[0].SnapShot.Type}\n");
+                Dlog($"Linking TallySlot: {Queue[0].SnapShot.Type}");
 
                 switch (SlotLink.WorkLoad())
                 {
@@ -1839,6 +1916,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         }
         public class InventoryBrowser : QueueOp
         {
+
             public InvWork InventoryCheck;
             public InventoryBrowser(Program prog, bool active = true) : base(prog, active)
             {
@@ -1846,6 +1924,11 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 InventoryCheck.Job = new JobMeta(JobType.FIND, WorkType.BROWSE, WorkResult.COMPLETE, WorkResult.NONE_CONTINUE);
 
                 Name = "INVENTORY BROWSE";
+            }
+
+            public override bool HasWork()
+            {
+                return base.HasWork() && Program.SWEPT;
             }
 
             public override void Run()
@@ -1866,7 +1949,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             {
                 Slot browser = Queue[0];
 
-                switch(InventoryCheck.WorkLoad())
+                switch (InventoryCheck.WorkLoad())
                 {
                     case WorkResult.DEAD_SLOT:
                         Dlog("DEAD!");
@@ -1888,7 +1971,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 }
             }
         }
-        
+
         public class DisplayManager : Op
         {
             public DisplayManager(Program prog, bool active = true) : base(prog, active)
@@ -1938,22 +2021,23 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 {
                     working.Pulled = false;
                     TallyScope.SIx = 0;
-                    Next();
+                    if (Next())
+                        Program.SCANNED = true;
                 }
             }
 
             bool Scan()
             {
                 Dlog($"Scanning Inventory: {Program.Inventories[WorkIndex].CustomName}");
-                
-                switch(TallyScope.WorkLoad())
+
+                switch (TallyScope.WorkLoad())
                 {
                     case WorkResult.OVERHEAT:
                         Dlog("OVER-HEAT!");
                         return false;
 
                     case WorkResult.COMPLETE:
-                    //case 1:
+                        //case 1:
                         Dlog("Scan Complete!");
                         return true;
 
@@ -2009,27 +2093,27 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         }
         public class ItemBrowser : Op
         {
-            public TypeWork TypeMatch;
-            public SubWork SubMatch;
-            public SlotWork SlotCheck;
+            public TypeWork TypeFind;
+            public SubWork SubFind;
             public SlotWork SlotMatch;
-            
+            public SlotWork SlotFind;
+
             public ItemBrowser(Program prog, bool active = true) : base(prog, active)
             {
-                TypeMatch = new TypeWork(prog.ROOT, this);
-                TypeMatch.Job = new JobMeta(JobType.FIND, WorkType.NONE, WorkResult.FIND_TYPE, WorkResult.NONE_CONTINUE);
+                TypeFind = new TypeWork(prog.ROOT, this);
+                TypeFind.Job = new JobMeta(JobType.FIND, WorkType.NONE, WorkResult.FIND_TYPE, WorkResult.NONE_CONTINUE);
 
-                SubMatch = new SubWork(prog.ROOT, this);
-                SubMatch.Job = new JobMeta(JobType.FIND, WorkType.NONE, WorkResult.FIND_SUB, WorkResult.NONE_CONTINUE);
-                TypeMatch.Chain = SubMatch;
-
-                SlotCheck = new SlotWork(prog.ROOT, this);
-                SlotCheck.Job = new JobMeta(JobType.MATCH, WorkType.CHECK, WorkResult.MATCH_SLOT, WorkResult.NONE_CONTINUE);
-                SubMatch.Chain = SlotCheck;
+                SubFind = new SubWork(prog.ROOT, this);
+                SubFind.Job = new JobMeta(JobType.FIND, WorkType.NONE, WorkResult.FIND_SUB, WorkResult.NONE_CONTINUE);
+                TypeFind.Chain = SubFind;
 
                 SlotMatch = new SlotWork(prog.ROOT, this);
-                SlotMatch.Job = new JobMeta(JobType.FIND, WorkType.BROWSE, WorkResult.FIND_SLOT, WorkResult.NONE_CONTINUE, TallyGroup.AVAILABLE);
-                SlotCheck.Chain = SlotMatch;
+                SlotMatch.Job = new JobMeta(JobType.MATCH, WorkType.CHECK, WorkResult.MATCH_SLOT, WorkResult.NONE_CONTINUE);
+                SubFind.Chain = SlotMatch;
+
+                SlotFind = new SlotWork(prog.ROOT, this);
+                SlotFind.Job = new JobMeta(JobType.FIND, WorkType.BROWSE, WorkResult.FIND_SLOT, WorkResult.NONE_CONTINUE, TallyGroup.AVAILABLE);
+                SlotMatch.Chain = SlotFind;
 
                 Name = "ITEM BROWSE";
             }
@@ -2044,15 +2128,16 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             {
                 base.Run();
 
-                TypeMatch.Job.Requester = Program.Requesters[WorkIndex];
-                TypeMatch.SetSearchCount();
+                Dlog($"{Program.Requesters[WorkIndex].CustomName} is Browsing...");
+                TypeFind.Job.Requester = Program.Requesters[WorkIndex];
+                TypeFind.SetSearchCount();
 
                 if (Browse())
                 {
-                    TypeMatch.SIx = 0;
-                    SubMatch.SIx = 0;
-                    SlotCheck.SIx = 0;
+                    TypeFind.SIx = 0;
+                    SubFind.SIx = 0;
                     SlotMatch.SIx = 0;
+                    SlotFind.SIx = 0;
                     Next();
                 }
             }
@@ -2066,7 +2151,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     return true;
                 }
 
-                switch(TypeMatch.WorkLoad())
+                switch (TypeFind.WorkLoad())
                 {
                     case WorkResult.OVERHEAT:
                         Dlog("OVER-HEAT!");
@@ -2085,12 +2170,14 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         return true;
 
                     case WorkResult.MATCH_SLOT:
-                        Dlog("Slot already present!");
+                        Dlog("Slot-match-only present!");
                         return true;
 
                     case WorkResult.FIND_SLOT:
                         Dlog("Eligable Slot Found!");
-                        browser.Pulled = ForceTransfer(browser, SlotMatch.DestinationTarget, SlotMatch.Current());
+                        browser.Pulled =
+                            SlotFind.Job.Requester == browser ? ForceTransfer(browser, SlotFind.DestinationTarget, SlotFind.Current()) :
+                            (SlotFind.Job.Requester is Slot) ? TallyTransfer((Slot)SlotFind.Job.Requester, SlotFind.Current()) : false;
                         Dlog($"Transfer success: {browser.Pulled}");
                         return true;
 
@@ -2099,6 +2186,10 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 }
             }
         }
+        /*public class SlotBrowser : Op
+        {
+
+        }*/
         public class AssemblyCleaner : Op
         {
             public AssemblyCleaner(Program prog, bool active) : base(prog, active)
@@ -2183,6 +2274,10 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 base.Setup();
                 Profile.Setup(TermBlock.CustomData);
             }
+            public void DefaultData(string defData)
+            {
+                TermBlock.CustomData = TermBlock.CustomData == string.Empty ? defData : TermBlock.CustomData;
+            }
         }
         public class Display : block
         {
@@ -2191,10 +2286,10 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public List<string> StringList = new List<string>();
 
             public string[][] Buffer = new string[2][];
-            public int[] ScreenRatio = new int[2]; // chars, lines
-            public int[] ScreenCount = new int[2];
 
-            //public int WorkingIndex;
+            int CharCount;
+            int LineCount;
+
             int ProdCharBuffer = 0;
             int BodySize;
             int BodyCount;
@@ -2208,10 +2303,10 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public bool AutoScroll;
             public DisplayMeta Meta;
 
-            public Display(BlockMeta bMeta, int[] ratio) : base(bMeta)
+            public Display(BlockMeta bMeta /*, int[] ratio*/) : base(bMeta)
             {
                 Panel = (IMyTextPanel)bMeta.Block;
-                RebootScreen(ratio);
+                RebootScreen();
 
                 ScrollIndex = 0;
                 ScrollDirection = 1;
@@ -2258,6 +2353,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                                     Meta.Mode = ScreenMode.TALLY;
                                 if (Contains(nextline, "sort"))
                                     Meta.Mode = ScreenMode.SORT;
+                                if (Contains(nextline, "link"))
+                                    Meta.Mode = ScreenMode.LINK;
                                 break;
 
                             case '@': // Target
@@ -2304,6 +2401,10 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                                     int newDelay = Convert.ToInt32(Buffer[1][1]);
                                     Delay = newDelay > 0 ? newDelay : DefScrollDelay;
                                 }
+                                if (Contains(nextline, "auto"))
+                                {
+                                    AutoScroll = !nextline.Contains("-");
+                                }
                                 if (Contains(nextline, "f_size"))
                                 {
                                     Panel.FontSize = Convert.ToInt32(Buffer[1][1]);
@@ -2347,16 +2448,16 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     catch { }
                 }
             }
-            public void RebootScreen(int[] ratio)
+            public void RebootScreen(/*int[] ratio*/)
             {
-                if (Panel == null ||
+                /*if (Panel == null ||
                     ratio == null ||
                     ratio.Length < 2)
-                    return;
+                    return;*/
 
                 Panel.ContentType = ContentType.TEXT_AND_IMAGE;
                 Panel.Font = "Monospace";
-                ScreenRatio = ratio == null ? DefScreenRatio : ratio;
+                //ScreenRatio = ratio == null ? DefScreenRatio : ratio;
             }
             public bool Update()
             {
@@ -2374,12 +2475,9 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     if (Timer >= Delay)
                     {
                         Timer = 0;
-                        Scroll();
+                        ScrollDirection = ScrollIndex >= BodyCount - BodySize ? -1 : ScrollIndex <= HeaderCount ? 1 : ScrollDirection;
+                        Scroll(ScrollDirection);
                     }
-                }
-                else
-                {
-
                 }
 
                 return true;
@@ -2404,36 +2502,33 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         break;
                 }
             }
-            void Scroll()
+            /*void Scroll()
             {
-                Dlog($"Scroll Direction[index]: {ScrollDirection}[{ScrollIndex}]");
-                Dlog($"Header/Body/Footer Counts: {HeaderCount}/{BodyCount}/{FooterCount}");
-                Dlog($"LineCount/BodySize: {ScreenCount[1]}/{BodySize}");
+                
+
 
                 if (ScrollIndex >= BodyCount - BodySize)
                 {
-                    Dlog("Reverse");
                     ScrollDirection = -1;
                 }
-                    
+
 
                 if (ScrollIndex <= HeaderCount)
                 {
-                    Dlog("Forward");
                     ScrollDirection = 1;
                 }
-                    
+
                 Scroll(ScrollDirection);
-            }
-            void Scroll(int dir)
+            }*/
+            public void Scroll(int dir)
             {
                 ScrollIndex += dir;
-                ScrollIndex = ScrollIndex < HeaderCount ? HeaderCount : ScrollIndex >= BodyCount - BodySize ? (BodyCount - BodySize) /*- 1*/ : ScrollIndex;
+                ScrollIndex = ScrollIndex < 0 ? 0 : ScrollIndex > (BodyCount - BodySize) ? (BodyCount - BodySize) /*- 1*/ : ScrollIndex;
             }
             void StringBuilder()
             {
-                ScreenCount[0] = MonoSpaceChars(ScreenRatio[0], Panel);
-                ScreenCount[1] = MonoSpaceLines(ScreenRatio[1], Panel);
+                CharCount = MonoSpaceChars(Panel);
+                LineCount = MonoSpaceLines(Panel);
 
                 BodyCount = 0;
                 HeaderCount = 0;
@@ -2472,11 +2567,14 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         case ScreenMode.TALLY:
                             AppendLine(StrForm.HEADER, "[Tally]");
                             TallyBuilder();
-                            AppendLine(StrForm.FOOTER, "[TGM version 3.0]");
+                            //AppendLine(StrForm.FOOTER, "[TGM version 3.0]");
+                            break;
+
+                        case ScreenMode.LINK:
+                            AppendLine(StrForm.HEADER, $"[Links ({Program.PumpRequests.Count})]");
+                            LinkBuilder();
                             break;
                     }
-
-                    //AppendLine(StrForm.EMPTY);
 
                     switch (Meta.TargetType)
                     {
@@ -2495,14 +2593,13 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                             break;
                     }
 
-                    //AppendLine(StrForm.FOOTER, "[TGM version 3.0]");
+                    AppendLine(StrForm.FOOTER, "[TGM version 3.0]");
                 }
                 catch
                 {
-                    Dlog("BUILDER FAIL-POINT!\n");
-                    //StringList.Add("BUILDER FAIL-POINT!\n");
+                    AppendLine(StrForm.WARNING, "String Builder Error...");
+                    Dlog("STRING BUILDER FAIL-POINT!");
                 }
-                //RawCount = RawLines.Count;
             }
 
             void StringWriter()
@@ -2514,19 +2611,19 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     for (int h = 0; h < HeaderCount; h++)
                         LINE(StringList[h]);
 
-                    BodySize = ScreenCount[1] - (HeaderCount + FooterCount);
+                    BodySize = LineCount - (HeaderCount + FooterCount);
 
-                    for (int b = 0; b + ScrollIndex < BodyCount && b < BodySize; b++)
-                        LINE(StringList[ScrollIndex + b]);
+                    for (int b = 0; b < BodyCount && b < BodySize; b++)
+                        LINE(StringList[HeaderCount + ScrollIndex + b]);
 
                     for (int f = 0; f < FooterCount; f++)
-                        LINE(StringList[f + (HeaderCount + BodySize)]);
+                        LINE(StringList[f + (HeaderCount + BodyCount)]);
                 }
                 catch
                 {
                     Dlog("WRITER FAIL-POINT!");
                 }
-                
+
             }
 
             void AppendFormattedString(StrForm format, string rawInput, out int lineCount)
@@ -2550,7 +2647,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     case StrForm.TABLE:
                         if (blocks.Length == 2)
                         {
-                            remains = ScreenCount[0] - blocks[1].Length;
+                            remains = CharCount - blocks[1].Length;
                             if (remains > 0)
                             {
                                 if (remains < blocks[0].Length)
@@ -2564,7 +2661,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         }
                         else
                         {
-                            remains = ScreenCount[0] - blocks[1].Length;
+                            remains = CharCount - blocks[1].Length;
                             FAP("[" + blocks[1] + "]");
 
                             for (int i = 0; i < (remains - blocks[1].Length); i++)
@@ -2575,13 +2672,13 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     case StrForm.HEADER:
                     case StrForm.SUB_HEADER:
                     case StrForm.FOOTER:
-                        if (ScreenCount[0] <= blocks[0].Length) // Can header fit side dressings?
+                        if (CharCount <= blocks[0].Length) // Can header fit side dressings?
                         {
                             FormattedBuilder.Append(blocks[0]);
                         }
                         else // Apply Header Dressings
                         {
-                            remains = ScreenCount[0] - blocks[0].Length;
+                            remains = CharCount - blocks[0].Length;
 
                             if (remains % 2 == 1)
                             {
@@ -2616,7 +2713,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         break;
 
                     case StrForm.INVENTORY:
-                        if (ScreenCount[0] < (blocks[0].Length + blocks[1].Length)) // Can Listing fit on one line?
+                        if (CharCount < (blocks[0].Length + blocks[1].Length)) // Can Listing fit on one line?
                         {
                             StringList.Add(blocks[0]);
                             StringList.Add(blocks[1]);
@@ -2627,7 +2724,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         {
                             FAP(blocks[0]);
 
-                            for (int i = 0; i < (ScreenCount[0] - (blocks[0].Length + blocks[1].Length)); i++)
+                            for (int i = 0; i < (CharCount - (blocks[0].Length + blocks[1].Length)); i++)
                                 FAP("-");
 
                             FAP(blocks[1]);
@@ -2637,7 +2734,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     case StrForm.RESOURCE:
                         if (!blocks[1].Contains("%"))
                             blocks[1] += "|" + blocks[2];
-                        if (ScreenCount[0] < (blocks[0].Length + blocks[1].Length)) // Can Listing fit on one line?
+                        if (CharCount < (blocks[0].Length + blocks[1].Length)) // Can Listing fit on one line?
                         {
                             StringList.Add(blocks[0]);
                             StringList.Add(blocks[1]);
@@ -2647,7 +2744,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         else
                         {
                             FAP(blocks[0]);
-                            for (int i = 0; i < (ScreenCount[0] - (blocks[0].Length + blocks[1].Length)); i++)
+                            for (int i = 0; i < (CharCount - (blocks[0].Length + blocks[1].Length)); i++)
                                 FAP("-");
                             FAP(blocks[1]);
                         }
@@ -2655,7 +2752,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                     case StrForm.STATUS:
                         // remaining chars = total line chars - (colored blocks + 2 to correct for colored blocks spacing)
-                        remains = ScreenCount[0] - (blocks[0].Length + blocks[1].Length + 2);
+                        remains = CharCount - (blocks[0].Length + blocks[1].Length + 2);
                         if (remains > 0)
                         {
                             if (remains < blocks[0].Length)
@@ -2673,7 +2770,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     case StrForm.PRODUCTION:
                         if (!Program.ShowProdBuilding)
                         {
-                            if (ScreenCount[0] < (blocks[0].Length + blocks[2].Length + blocks[3].Length // Can Listing fit on one line?
+                            if (CharCount < (blocks[0].Length + blocks[2].Length + blocks[3].Length // Can Listing fit on one line?
                                 + 4)) // Additional chars
                             {
                                 StringList.Add(blocks[0]);
@@ -2686,7 +2783,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                             {
                                 FAP(blocks[0]);
 
-                                for (int i = 0; i < (ScreenCount[0] - (blocks[0].Length + blocks[2].Length + blocks[3].Length + 1)); i++)
+                                for (int i = 0; i < (CharCount - (blocks[0].Length + blocks[2].Length + blocks[3].Length + 1)); i++)
                                     FAP("-");
 
                                 FAP($"{blocks[2]}/{blocks[3]}");
@@ -2694,7 +2791,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         }
                         else
                         {
-                            if (ScreenCount[0] < (blocks[0].Length + blocks[1].Length + blocks[2].Length + blocks[3].Length // Can Listing fit on one line?
+                            if (CharCount < (blocks[0].Length + blocks[1].Length + blocks[2].Length + blocks[3].Length // Can Listing fit on one line?
                                 + 4)) // Additional chars
                             {
                                 StringList.Add(blocks[0]);
@@ -2713,7 +2810,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                                 FAP($" | {blocks[1]}");
 
-                                for (int i = 0; i < (ScreenCount[0] - (ProdCharBuffer + blocks[1].Length + blocks[2].Length + blocks[3].Length + 4)); i++)
+                                for (int i = 0; i < (CharCount - (ProdCharBuffer + blocks[1].Length + blocks[2].Length + blocks[3].Length + 4)); i++)
                                     FAP("-");
 
                                 FAP($"{blocks[2]}/{blocks[3]}");
@@ -2727,7 +2824,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                             FAP(blocks[0]);
                             break;
                         }
-                        remains = ScreenCount[0] - (blocks[0].Length + blocks[1].Length + blocks[2].Length + blocks[3].Length + 1);
+                        remains = CharCount - (blocks[0].Length + blocks[1].Length + blocks[2].Length + blocks[3].Length + 1);
                         if (remains < 0)
                         {
                             StringList.Add("Filter:");
@@ -2744,6 +2841,26 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                                 FAP("-");
                             FAP($"{blocks[2]}:{blocks[3]}");
                         }
+                        break;
+
+                    case StrForm.LINK:
+
+                        remains = CharCount - (blocks[0].Length + blocks[1].Length + blocks[2].Length);
+                        if (remains % 2 == 1)
+                        {
+                            blocks[1] += " ";
+                            remains -= 1;
+                        }
+                        remains /= 2;
+
+                        FAP(blocks[0]);
+                        for (int i = 0; i < remains; i++)
+                            FAP(" ");
+                        FAP(blocks[1]);
+                        for (int i = 0; i < remains; i++)
+                            FAP(" ");
+                        FAP(blocks[2]);
+
                         break;
                 }
 
@@ -2815,6 +2932,15 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
 
             }
+
+            void LinkBuilder()
+            {
+                foreach (Slot request in Program.PumpRequests)
+                {
+                    AppendLine(StrForm.LINK, RawLink(request, CharCount));
+                }
+            }
+
             void SortBuilder(block target)
             {
                 if (target.Profile == null)
@@ -2851,19 +2977,19 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             {
                 //AppendLine(StrForm.EMPTY);
 
-                MyFixedPoint target;
+                MyFixedPoint blah;
                 foreach (TallyItemType type in Program.AllItemTypes)
                 {
-                    if (!ProfileCompare(Profile, type.TypeId, out target))
+                    if (!ProfileCompare(Profile, type.TypeId, out blah))
                         continue;
 
                     AppendLine(StrForm.SUB_HEADER, $"[{type.TypeId.Replace("MyObjectBuilder_", "")}]");
                     foreach (TallyItemSub subType in type.SubTypes)
                     {
-                        if (!ProfileCompare(Profile, subType.Type, out target))
+                        if (!ProfileCompare(Profile, subType.Type, out blah))
                             continue;
 
-                        AppendLine(StrForm.INVENTORY, RawListItem(Meta, target, subType.CurrentTotal, subType.Type, Program.LIT_DEFS));
+                        AppendLine(StrForm.INVENTORY, RawListItem(Meta, subType, Program.LIT_DEFS));
                     }
 
                     AppendLine(StrForm.EMPTY);
@@ -2986,15 +3112,11 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         {
             public bool Pulled = false;
             public IMyInventoryOwner Owner;
-            public IMyInventory Input;
-            public IMyInventory Output;
             public List<Slot> Slots = new List<Slot>();
 
             public Inventory(BlockMeta meta) : base(meta)
             {
                 Owner = (IMyInventoryOwner)meta.Block;
-                Input = Owner.GetInventory(0);
-                Output = Input;
             }
 
             public override void Setup()
@@ -3006,20 +3128,21 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     Program.Requesters.Remove(this);
             }
 
-            
+
 
             public bool IsFull(bool input = true)
             {
-                IMyInventory target = input ? Input : Output;
+                IMyInventory target = PullInventory(input);
                 return (float)target.CurrentVolume / (float)target.MaxVolume > FULL_MIN;
             }
             public bool IsClogged()
             {
-                return (float)Input.CurrentVolume / (float)Input.MaxVolume > CLEAN_MIN;
+                IMyInventory target = PullInventory();
+                return (float)target.CurrentVolume / (float)target.MaxVolume > CLEAN_MIN;
             }
             public bool IsEmpty(bool input = true)
             {
-                IMyInventory target = input ? Input : Output;
+                IMyInventory target = PullInventory(input);
                 return (float)target.CurrentVolume / (float)target.MaxVolume < EMPTY_MAX;
             }
             public bool EmptyCheck()
@@ -3031,13 +3154,50 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             {
                 return true;
             }
-            public virtual MyInventoryItem? PullIndex(int i)
+            public IMyInventory PullInventory(int index)
             {
-                return Input.GetItemAt(i);
+                int blah;
+                return PullInventory(index, out blah);
             }
-            public virtual int ItemCount()
+            public IMyInventory PullInventory(int index, out int offset)
             {
-                return Input.ItemCount;
+                IMyInventory target;
+                offset = 0;
+
+                for (int i = 0; i < Owner.InventoryCount; i++)
+                {
+                    target = Owner.GetInventory(i);
+                    if (target.ItemCount <= index - offset)
+                    {
+                        offset += target.ItemCount;
+                        continue;
+                    }
+                    return target;
+                }
+                return null;
+            }
+            public IMyInventory PullInventory(bool input = true)
+            {
+                return input ? Owner.GetInventory(0) : Owner.InventoryCount > 1 ? Owner.GetInventory(1) : Owner.GetInventory(0);
+            }
+            public MyInventoryItem? PullIndex(int index)
+            {
+                int offset;
+                IMyInventory target = PullInventory(index, out offset);
+
+                if (target == null)
+                    return null;
+
+                return target.GetItemAt(index - offset);
+            }
+            public int ItemCount()
+            {
+                int total = 0;
+
+                for (int i = 0; i < Owner.InventoryCount; i++)
+                    total += Owner.GetInventory(i).ItemCount;
+
+                return total;
             }
 
         }
@@ -3068,25 +3228,10 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         public class Producer : Inventory
         {
             public IMyProductionBlock ProdBlock;
-            
+
             public Producer(BlockMeta meta) : base(meta)
             {
                 ProdBlock = (IMyProductionBlock)meta.Block;
-                Input = ProdBlock.InputInventory;
-                Output = ProdBlock.OutputInventory;
-            }
-
-            public override MyInventoryItem? PullIndex(int i)
-            {
-                if (i < Input.ItemCount)
-                    return Input.GetItemAt(i);
-
-                return Output.GetItemAt(i - Output.ItemCount);
-            }
-
-            public override int ItemCount()
-            {
-                return Input.ItemCount + Output.ItemCount;
             }
         }
         public class Assembler : Producer
@@ -3108,14 +3253,20 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public Refinery(BlockMeta meta) : base(meta)
             {
                 RefineBlock = (IMyRefinery)meta.Block;
-                Profile.AUTO_REFINE = true;
-                Profile.RESIDE = true;
-                RefineBlock.UseConveyorSystem = Profile.AUTO_REFINE;
+                //Profile.AUTO_REFINE = true;
+                //Profile.RESIDE = true;
+                RefineBlock.UseConveyorSystem = Profile.ACTIVE_CONVEYOR;
             }
 
             public override bool FillCheck()
             {
-                return !Profile.AUTO_REFINE;
+                return !Profile.ACTIVE_CONVEYOR;
+            }
+
+            public override void Setup()
+            {
+                DefaultData(RefineryDefault);
+                base.Setup();
             }
         }
         public class Resource : block
@@ -3138,7 +3289,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 return false;
             return (list.FindIndex(x => x.BlockID == block.EntityId) < 0 && block.CustomName.Contains(Signature));
         }
-        static bool PullSignedTerminalBlocks(List<IMyTerminalBlock> blocks, List<IMyBlockGroup> groups)
+        static bool PullTerminalBlocksFromSignedGroup(List<IMyTerminalBlock> blocks, List<IMyBlockGroup> groups)
         {
             blocks.Clear();
             IMyBlockGroup group = groups.Find(x => Contains(x.Name, Signature));
@@ -3150,45 +3301,52 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         }
         static bool ForceTransfer(Inventory target, MyFixedPoint targetAllowed, Slot source)
         {
-            MyFixedPoint allowed = AllowableReturn(targetAllowed, source);
-            return ForceTransfer(target, source.Inventory, source.SnapShot, allowed);
-        }
-        static bool ForceTransfer(Inventory target, Inventory source, MyInventoryItem item, MyFixedPoint amount)
-        {
-            if (amount < 0)
-            {
-                source.Dlog("Not allowed to move anymore!");
-                return false;
-            }
+            MyFixedPoint? allowed = AllowableReturn(targetAllowed, source);
 
-            if (amount != 0)
-                return target.Input.TransferItemFrom(source.Output, item, amount);
-
-            return target.Input.TransferItemFrom(source.Output, item);
+            return target.PullInventory().TransferItemFrom(source.Inventory.PullInventory(source.Index), source.Index, null, null, allowed);
         }
         static bool TallyTransfer(Slot source, Slot dest)
         {
             try
             {
-                MyFixedPoint amount = AllowableReturn(dest, source);
-                return dest.Inventory.Input.TransferItemFrom(source.Inventory.Output, source.SnapShot, amount);
+                if (source.SnapShot.Type != dest.SnapShot.Type)
+                {
+                    dest.Dlog("Type mis-match!");
+                    return false;
+                }
+                    
+                if (dest.Inventory.IsFull())
+                {
+                    dest.Dlog("Too Full!");
+                    return false;
+                }
+
+                if (source.Inventory.IsEmpty())
+                {
+                    source.Dlog("Too Empty!");
+                    return false;
+                }
+
+                MyFixedPoint? amount = AllowableReturn(dest, source);
+
+                return dest.Inventory.PullInventory(dest.Index).TransferItemFrom(source.Inventory.PullInventory(source.Index), source.Index, dest.Index, true, amount);
             }
             catch { return false; }
         }
-        
+
         static MyFixedPoint MaximumReturn(MyFixedPoint IN, MyFixedPoint OUT)
         {
             return IN == 0 ? OUT : OUT == 0 ? IN : IN < OUT ? IN : OUT;
         }
-        static MyFixedPoint AllowableReturn(Slot dest, Slot moving)
+        static MyFixedPoint? AllowableReturn(Slot dest, Slot moving)
         {
             return AllowableReturn(dest.Filter.Target > 0 ? dest.Filter.Target - dest.SnapShot.Amount : 0, moving);
         }
-        static MyFixedPoint AllowableReturn(MyFixedPoint destTarget, Slot moving)
+        static MyFixedPoint? AllowableReturn(MyFixedPoint destTarget, Slot moving)
         {
             MyFixedPoint allow = moving.Filter.Target > 0 ? moving.SnapShot.Amount - moving.Filter.Target : moving.Inventory.Profile.RESIDE ? moving.SnapShot.Amount - 1 : 0;
-
-            return MaximumReturn(destTarget, allow);
+            MyFixedPoint? output = MaximumReturn(destTarget, allow);
+            return output.Value != 0 ? output.Value < 0 ? 0 : output : null;
         }
         static ProdMeta? ReadRecipe(string recipe, RootMeta meta)
         {
@@ -3202,13 +3360,13 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             }
             catch { return null; }
         }
-        static int MonoSpaceChars(int ratio, IMyTextPanel panel)
+        static int MonoSpaceChars(IMyTextPanel panel)
         {
-            return (int)(ratio / panel.FontSize);
+            return (int)(/*ratio / panel.FontSize*/ panel.SurfaceSize.X / (panel.FontSize * MONO_RATIO[0]));
         }
-        static int MonoSpaceLines(int ratio, IMyTextPanel panel)
+        static int MonoSpaceLines(IMyTextPanel panel)
         {
-            return (int)(ratio / panel.FontSize);
+            return (int)(/*ratio / panel.FontSize*/ panel.SurfaceSize.Y / (panel.FontSize * MONO_RATIO[1]));
         }
         #endregion
 
@@ -3217,7 +3375,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         {
             target = 0;
 
-            if (!destination.Input.IsConnectedTo(slot.Inventory.Output))
+            if (!destination.PullInventory().IsConnectedTo(slot.Inventory.PullInventory(false)))
             {
                 slot.Dlog("No Connection!");
                 return false;
@@ -3292,9 +3450,9 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 A.ItemID[0], A.ItemID[1],
                 typeB, subB);
         }
-        static bool FilterCompare(Root dbug, string a, string A, string b, string B)
+        static bool FilterCompare(Root dbug, string AA, string A, string b, string B)
         {
-            if (a != "any" && b != "any" && !Contains(a, b) && !Contains(b, a))
+            if (AA != "any" && b != "any" && !Contains(AA, b) && !Contains(b, AA))
             {
 
                 return false;
@@ -3320,8 +3478,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             return
                 Req != Can && Req.SnapShot.Type == Can.SnapShot.Type &&
                 //A.Inventory == B.Inventory || //A.Inventory == null || B.Inventory == null || // Let them amalgamate???
-                ((Req.Filter.IN == 1 && Req.InLink == null && Req.Inventory.Input.IsConnectedTo(Can.Inventory.Output)) ||
-                (Req.Filter.OUT == 1 && Req.OutLink == null && Req.Inventory.Input.IsConnectedTo(Can.Inventory.Output)));
+                ((Req.Filter.IN == 1 && Req.InLink == null && Req.Inventory.PullInventory().IsConnectedTo(Can.Inventory.PullInventory(false))) ||
+                (Req.Filter.OUT == 1 && Req.OutLink == null && Req.Inventory.PullInventory().IsConnectedTo(Can.Inventory.PullInventory(false))));
         }
 
         #endregion
@@ -3402,19 +3560,19 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             output += simp;
             return output;
         }
-        static string ParseItemTotal(MyFixedPoint item, DisplayMeta module)
+        static string ParseItemTotal(MyFixedPoint current, MyFixedPoint? target, DisplayMeta module)
         {
             switch (module.Notation)
             {
                 case Notation.PERCENT: // has no use here
                 case Notation.DEFAULT:
-                    return $"{item}";    // decimaless def
+                    return $"{current}{(target.HasValue? $"/{target.Value}" : "" )}";    // decimaless def
 
                 case Notation.SCIENTIFIC:
-                    return $"{NotationBundler((float)item, module.SigCount)}";
+                    return $"{NotationBundler((float)current, module.SigCount)}";
 
                 case Notation.SIMPLIFIED:
-                    return $"{SimpleBundler((float)item, module.SigCount)}";
+                    return $"{SimpleBundler((float)current, module.SigCount)}";
             }
 
             return "??????";
@@ -3438,9 +3596,9 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             }
             return itemName;
         }
-        static string RawListItem(DisplayMeta mod, MyFixedPoint target, MyFixedPoint current, MyItemType type, bool lit)
+        static string RawListItem(DisplayMeta mod, TallyItemSub sub, bool lit)
         {
-            return $"{ItemNameCrop(type, lit)}{Split}{ParseItemTotal(current, mod)}";
+            return $"{ItemNameCrop(sub.Type, lit)}{Split}{ParseItemTotal(sub.CurrentTotal, sub.TargetGoal, mod)}";
         }
         static string RawFilter(Filter filter)
         {
@@ -3452,6 +3610,38 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             output += filter.IN == 1 ? ":+ IN:" : filter.IN == 0 ? ":= IN:" : ":- IN:";
             output += filter.OUT == 1 ? ":+OUT:" : filter.OUT == 0 ? ":=OUT:" : ":-OUT:";
             return output;
+        }
+        static string RawLink(Slot link, int length)
+        {
+            if (link == null)
+                return "null slot!";
+
+            /*string linkName = $"{link.Inventory.CustomName}[{link.Index}]";
+            string output = $"{(link.InLink == null ? "No Input" : $"{link.InLink.Inventory.CustomName}[{link.InLink.Index}]")}";
+            string outLink = $"{(link.OutLink == null ? "No Output" : $"{link.OutLink.Inventory.CustomName}[{link.OutLink.Index}]")}";
+            int buffers = length - (linkName.Length + output.Length + outLink.Length);
+            if (buffers % 2 > 0)
+            {
+                linkName += " ";
+                buffers -= 1;
+            }
+            buffers /= 2;
+
+            for (int i = 0; i < buffers; i++)
+                output += " ";
+
+            output += linkName;
+
+            for (int i = 0; i < buffers; i++)
+                output += " ";
+
+            output += outLink;
+
+            return output;*/
+
+            return $"{(link.InLink == null ? "No Input" : $"{link.InLink.Inventory.CustomName}[{link.InLink.Index}]")}{Split}" +
+                $"{link.Inventory.CustomName}[{link.Index}]{Split}" +
+                $"{(link.OutLink == null ? "No Output" : $"{link.OutLink.Inventory.CustomName}[{link.OutLink.Index}]")}";
         }
         #endregion
 
@@ -3531,7 +3721,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                 if (DetectedBlocks[i] is IMyTextPanel)
                 {
-                    newBlock = new Display(new BlockMeta(ROOT, DetectedBlocks[i]), DefScreenRatio);
+                    newBlock = new Display(new BlockMeta(ROOT, DetectedBlocks[i])/*, DefScreenRatio*/);
                     Displays.Add((Display)newBlock);
                 }
 
@@ -3625,30 +3815,38 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         void ReTagBlocks()
         {
             List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
-            if (!PullSignedTerminalBlocks(blocks, DetectedGroups))
+            if (!PullTerminalBlocksFromSignedGroup(blocks, DetectedGroups))
                 return;
 
             foreach (IMyTerminalBlock block in blocks)
                 if (!block.CustomName.Contains(Signature))
                     block.CustomName += Signature;
         }
-        void ReNameBlocks(string name, bool numbered = false)
+        void ReNameBlocks(string name)
         {
             List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
-            if (!PullSignedTerminalBlocks(blocks, DetectedGroups))
+            if (!PullTerminalBlocksFromSignedGroup(blocks, DetectedGroups))
                 return;
-
 
             for (int i = 0; i < blocks.Count; i++)
             {
-                string lead = numbered ? i.ToString() : "";
-                blocks[i].CustomName = $"{lead}{name}";
+                //string lead = numbered ? $"{i}" : "";
+                blocks[i].CustomName = $"{name} - {i}{Signature}";
             }
-
         }
+
+        void ScrollScreen(string name, int direction)
+        {
+            Display target = Displays.Find(x => x.CustomName.Contains(name));
+            if (target == null)
+                return;
+
+            target.Scroll(direction);
+        }
+
         void ToggleOp(string op)
         {
-            switch(op)
+            switch (op)
             {
                 case "TALLY":
                     Scanner.Toggle();
@@ -3682,7 +3880,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         void ReFilterBlocks()
         {
             List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
-            if (!PullSignedTerminalBlocks(blocks, DetectedGroups))
+            if (!PullTerminalBlocksFromSignedGroup(blocks, DetectedGroups))
                 return;
 
             string masterCustomData = string.Empty;
@@ -3780,7 +3978,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     LoadStorage();
                     break;
 
-                
+
             }
 
             // SPECIAL
@@ -3797,6 +3995,14 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     case "TOGGLE":
                         ToggleOp(InputBuffer[1]);
                         break;
+
+                    case "UP":
+                        ScrollScreen(InputBuffer[1], -1);
+                        break;
+
+                    case "DOWN":
+                        ScrollScreen(InputBuffer[1], 1);
+                        break;
                 }
             }
             catch
@@ -3804,6 +4010,9 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
             }
         }
+
+        
+
         void ProgEcho()
         {
             Echo(EchoBuilder.ToString());
