@@ -247,7 +247,6 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         static int[] MONO_RATIO = {20, 30};
 
         static UpdateFrequency INIT_FREQ = UpdateFrequency.Update1;
-        //static readonly int[] DefScreenRatio = { 25, 15 };
         /// WARNING!! DO NOT GO FURTHER USER!! ///
 
         #region DEFAULTS
@@ -800,7 +799,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     return false;
                 }
 
-                MyInventoryItem? check = Inventory.PullIndex(Index);
+                MyInventoryItem? check = Inventory.PullItem(Index);
                 if (!check.HasValue)
                 {
 
@@ -1638,7 +1637,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                 if (SIx >= inv.Slots.Count) // Not enough slots
                 {
-                    MyInventoryItem? check = inv.PullIndex(SIx);
+                    MyInventoryItem? check = inv.PullItem(SIx);
                     if (!check.HasValue)
                     {
                         Dlog("Bad item lookup!");
@@ -1671,13 +1670,18 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             }
             bool SlotPush()
             {
-                if (SlotList[SIx].CheckBroken() /*Inventory == null*/)
+                if (SlotList[SIx].CheckDead())
                 {
-                    //Dlog("Broken Slot, removing from pump requesters...");
-                    Dlog("Broken Slot, requires removal...");
-                    //SlotList.RemoveAt(SIx);
-                    //Job.SearchCount = SlotList.Count;
-                    //SIx--;
+                    Dlog("Broken Slot, removing from pump requesters...");
+                    SlotList.RemoveAt(SIx);
+                    Job.SearchCount = SlotList.Count;
+                    SIx--;
+                    return false;
+                }
+
+                if (SlotList[SIx].CheckBroken())
+                {
+                    Dlog("Unsorted Slot, skipping...");
                     return false;
                 }
 
@@ -2186,7 +2190,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         return true;
 
                     case WorkResult.FIND_SLOT:
-                        Dlog("Eligable Slot Found!");
+                        Dlog($"Eligable Slot Found! Requester is {((SlotFind.Job.Requester is Inventory) ? "Inventory" : (SlotFind.Job.Requester is Slot) ? "Slot" : "Unknown")}");
                         browser.Pulled =
                             SlotFind.Job.Requester == browser ? ForceTransfer(browser, SlotFind.DestinationTarget, SlotFind.Current()) :
                             (SlotFind.Job.Requester is Slot) ? TallyTransfer((Slot)SlotFind.Job.Requester, SlotFind.Current()) : false;
@@ -2198,10 +2202,6 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 }
             }
         }
-        /*public class SlotBrowser : Op
-        {
-
-        }*/
         public class AssemblyCleaner : Op
         {
             public AssemblyCleaner(Program prog, bool active) : base(prog, active)
@@ -2315,7 +2315,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public bool AutoScroll;
             public DisplayMeta Meta;
 
-            public Display(BlockMeta bMeta /*, int[] ratio*/) : base(bMeta)
+            public Display(BlockMeta bMeta) : base(bMeta)
             {
                 Panel = (IMyTextPanel)bMeta.Block;
                 RebootScreen();
@@ -2460,16 +2460,10 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     catch { }
                 }
             }
-            public void RebootScreen(/*int[] ratio*/)
+            public void RebootScreen()
             {
-                /*if (Panel == null ||
-                    ratio == null ||
-                    ratio.Length < 2)
-                    return;*/
-
                 Panel.ContentType = ContentType.TEXT_AND_IMAGE;
                 Panel.Font = "Monospace";
-                //ScreenRatio = ratio == null ? DefScreenRatio : ratio;
             }
             public bool Update()
             {
@@ -2514,24 +2508,6 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         break;
                 }
             }
-            /*void Scroll()
-            {
-                
-
-
-                if (ScrollIndex >= BodyCount - BodySize)
-                {
-                    ScrollDirection = -1;
-                }
-
-
-                if (ScrollIndex <= HeaderCount)
-                {
-                    ScrollDirection = 1;
-                }
-
-                Scroll(ScrollDirection);
-            }*/
             public void Scroll(int dir)
             {
                 ScrollIndex += dir;
@@ -2579,7 +2555,6 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         case ScreenMode.TALLY:
                             AppendLine(StrForm.HEADER, "[Tally]");
                             TallyBuilder();
-                            //AppendLine(StrForm.FOOTER, "[TGM version 3.0]");
                             break;
 
                         case ScreenMode.PUSH:
@@ -2591,12 +2566,10 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     switch (Meta.TargetType)
                     {
                         case TargetType.DEFAULT:
-                            //AppendLine(StrForm.HEADER, $"( {Meta.TargetName} )");
                             break;
 
                         case TargetType.BLOCK:
-                            if (Meta.Mode == ScreenMode.RESOURCE || Meta.Mode == ScreenMode.STATUS)
-                                TableHeaderBuilder();
+                            TableHeaderBuilder();
                             RawBlockBuilder(Meta.TargetBlock);
                             break;
 
@@ -2657,7 +2630,28 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         break;
 
                     case StrForm.TABLE:
-                        if (blocks.Length == 2)
+                        if (blocks.Length != 2)
+                        {
+                            FAP(blocks[0]);
+                            break;
+                        }
+                        remains = CharCount - (blocks[0].Length + blocks[1].Length);
+                        if (remains > 0)
+                        {
+                            FAP(blocks[0]);
+                            for (int i = 0; i < remains; i++)
+                                FAP("=");
+                            FAP(blocks[1]);
+                        }
+                        else
+                        {
+                            StringList.Add(blocks[0]);
+                            StringList.Add(blocks[1]);
+                            lineCount = 2;
+                            return;
+                        }
+
+                        /*if (blocks.Length == 2)
                         {
                             remains = CharCount - blocks[1].Length;
                             if (remains > 0)
@@ -2674,11 +2668,11 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         else
                         {
                             remains = CharCount - blocks[1].Length;
-                            FAP("[" + blocks[1] + "]");
+                            FAP($"[{blocks[1]}]");
 
                             for (int i = 0; i < (remains - blocks[1].Length); i++)
                                 FAP("-");
-                        }
+                        }*/
                         break;
 
                     case StrForm.HEADER:
@@ -2725,6 +2719,11 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         break;
 
                     case StrForm.INVENTORY:
+                        if (blocks.Length != 2)
+                        {
+                            FAP(blocks[0]);
+                            break;
+                        }
                         if (CharCount < (blocks[0].Length + blocks[1].Length)) // Can Listing fit on one line?
                         {
                             StringList.Add(blocks[0]);
@@ -2831,7 +2830,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         break;
 
                     case StrForm.FILTER:
-                        if (blocks.Length == 1)
+                        if (blocks.Length != 4)
                         {
                             FAP(blocks[0]);
                             break;
@@ -2857,6 +2856,11 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                     case StrForm.LINK:
 
+                        if (blocks.Length != 3)
+                        {
+                            FAP(blocks[0]);
+                            break;
+                        }
                         remains = CharCount - (blocks[0].Length + blocks[1].Length + blocks[2].Length);
                         if (remains % 2 == 1)
                         {
@@ -2876,7 +2880,6 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         break;
                 }
 
-                //FAP("\n");
                 StringList.Add(FormattedBuilder.ToString());
 
             }
@@ -2893,7 +2896,6 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             void RawGroupBuilder(IMyBlockGroup targetGroup)
             {
                 AppendLine(StrForm.HEADER, $"( {Meta.TargetName} )");
-                AppendLine(StrForm.EMPTY);
 
                 TableHeaderBuilder();
 
@@ -2904,17 +2906,22 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 {
                     block next = Program.Blocks.Find(x => x.TermBlock == nextTermBlock);
                     if (next != null)
-                        RawBlockBuilder(next);
+                        RawBlockBuilder(next, false);
                     else
                         AppendLine(StrForm.WARNING, "Block data class not found! Signature missing from block in group!");
+                    AppendLine(StrForm.EMPTY);
                 }
             }
-            void RawBlockBuilder(block target)
+            void RawBlockBuilder(block target, bool single = true)
             {
-                AppendLine(StrForm.HEADER, $"( {target.CustomName} )");
+                AppendLine(single ? StrForm.HEADER : StrForm.SUB_HEADER, $"( {target.CustomName} )");
 
                 switch (Meta.Mode)
                 {
+                    case ScreenMode.INVENTORY:
+                        InventoryBuilder(target);
+                        break;
+
                     case ScreenMode.PUSH:
                         LinkBuilder(target);
                         break;
@@ -2928,6 +2935,29 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         break;
                 }
             }
+
+            void InventoryBuilder(block target)
+            {
+                if (!(target is Inventory))
+                {
+                    AppendLine(StrForm.WARNING, "Not Inventory!");
+                    return;
+                }
+
+                Inventory inventory = (Inventory)target;
+                if (inventory.Slots.Count < 0)
+                {
+                    AppendLine(StrForm.WARNING, "No Slots!");
+                    return;
+                }
+
+
+                //AppendLine(StrForm.TABLE, $"[ ITEM ]{Split}[ COUNT/TARGET ]");
+
+                foreach (Slot slot in inventory.Slots)
+                    AppendLine(StrForm.INVENTORY, RawSlotItem(Meta, slot, Program.LIT_DEFS));
+            }
+
             void LinkBuilder(block target)
             {
                 if (!(target is Inventory))
@@ -2935,6 +2965,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     AppendLine(StrForm.WARNING, "Not Link-able!");
                     return;
                 }
+
                 Inventory inventory = (Inventory)target;
                 if (inventory.Slots.Count < 0)
                 {
@@ -2961,8 +2992,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     return;
                 }
 
-                AppendLine(StrForm.HEADER, $"DEF IN:{target.Profile.DEFAULT_IN} | DEF OUT:{target.Profile.DEFAULT_OUT}");
-                AppendLine(StrForm.HEADER, $"FILL :{target.Profile.FILL      } | EMPTY :{target.Profile.EMPTY      }");
+                AppendLine(StrForm.SUB_HEADER, $"DEF IN:{target.Profile.DEFAULT_IN} | DEF OUT:{target.Profile.DEFAULT_OUT}");
+                AppendLine(StrForm.SUB_HEADER, $"FILL :{target.Profile.FILL      } | EMPTY :{target.Profile.EMPTY      }");
 
                 foreach (Filter filter in target.Profile.Filters)
                     AppendLine(StrForm.FILTER, RawFilter(filter));
@@ -2987,8 +3018,6 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             }
             void TallyBuilder()
             {
-                //AppendLine(StrForm.EMPTY);
-
                 MyFixedPoint blah;
                 foreach (TallyItemType type in Program.AllItemTypes)
                 {
@@ -3001,13 +3030,12 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         if (!ProfileCompare(Profile, subType.Type, out blah))
                             continue;
 
-                        AppendLine(StrForm.INVENTORY, RawListItem(Meta, subType, Program.LIT_DEFS));
+                        AppendLine(StrForm.INVENTORY, RawTallyItem(Meta, subType, Program.LIT_DEFS));
                     }
 
                     AppendLine(StrForm.EMPTY);
                 }
             }
-
             void TableHeaderBuilder()
             {
                 switch (Meta.Mode)
@@ -3016,7 +3044,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         break;
 
                     case ScreenMode.INVENTORY:
-                        AppendLine(StrForm.TABLE, $"[Items]{Seperator}Val|Uni");
+                        AppendLine(StrForm.TABLE, $"[Items]{Seperator}Val|Target");
                         break;
 
                     case ScreenMode.RESOURCE:
@@ -3190,15 +3218,30 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             {
                 return input ? Owner.GetInventory(0) : Owner.InventoryCount > 1 ? Owner.GetInventory(1) : Owner.GetInventory(0);
             }
-            public MyInventoryItem? PullIndex(int index)
+            public int PullLiteralIndex(int index)
+            {
+                IMyInventory blah;
+                return PullLiteralIndex(index, out blah);
+            }
+            public int PullLiteralIndex(int index, out IMyInventory target)
             {
                 int offset;
-                IMyInventory target = PullInventory(index, out offset);
+                target = PullInventory(index, out offset);
 
                 if (target == null)
+                    return -1;
+
+                return index - offset;
+            }
+            public MyInventoryItem? PullItem(int index)
+            {
+                IMyInventory targetInv;
+                int literalIndex = PullLiteralIndex(index, out targetInv);
+
+                if (literalIndex == -1)
                     return null;
 
-                return target.GetItemAt(index - offset);
+                return targetInv.GetItemAt(literalIndex);
             }
             public int ItemCount()
             {
@@ -3210,6 +3253,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 return total;
             }
 
+            
         }
         public class Connector : Inventory
         {
@@ -3311,9 +3355,13 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         }
         static bool ForceTransfer(Inventory target, MyFixedPoint targetAllowed, Slot source)
         {
+            target.Dlog("Performing Force Transfer...");
             MyFixedPoint? allowed = AllowableReturn(targetAllowed, source);
-
-            return target.PullInventory().TransferItemFrom(source.Inventory.PullInventory(source.Index), source.Index, null, null, allowed);
+            IMyInventory sourceInv;
+            int literalIndex = source.Inventory.PullLiteralIndex(source.Index, out sourceInv);
+            if (literalIndex == -1 || sourceInv == null)
+                return false;
+            return target.PullInventory().TransferItemFrom(sourceInv, literalIndex, null, null, allowed);
         }
         static bool TallyTransfer(Slot source, Slot dest)
         {
@@ -3381,18 +3429,18 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         #endregion
 
         #region Comparisons
-        static bool ProfileCompare(Inventory destination, Slot slot, out MyFixedPoint target, bool dirIn = true)
+        static bool ProfileCompare(Inventory destination, Slot source, out MyFixedPoint target, bool dirIn = true)
         {
             target = 0;
 
-            if (!destination.PullInventory().IsConnectedTo(slot.Inventory.PullInventory(false)))
+            if (!destination.PullInventory().IsConnectedTo(source.Inventory.PullInventory(false)))
             {
-                slot.Dlog("No Connection!");
+                source.Dlog("No Connection!");
                 return false;
             }
 
-            return dirIn ? slot.Filter.IN > -1 && ProfileCompare(destination.Profile, slot.SnapShot.Type, out target) :
-                           slot.Filter.OUT > -1 && ProfileCompare(destination.Profile, slot.SnapShot.Type, out target, false);
+            return dirIn ? source.Filter.OUT > -1 && ProfileCompare(destination.Profile, source.SnapShot.Type, out target) :
+                           source.Filter.IN > -1 && ProfileCompare(destination.Profile, source.SnapShot.Type, out target, false);
         }
         static bool ProfileCompare(FilterProfile profile, MyItemType type, out MyFixedPoint target, bool dirIn = true)
         {
@@ -3576,7 +3624,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             {
                 case Notation.PERCENT: // has no use here
                 case Notation.DEFAULT:
-                    return $"{current}{(target.HasValue? $"/{target.Value}" : "" )}";    // decimaless def
+                    return $"{current}{(target.HasValue? $"|{target.Value}" : "" )}";    // decimaless def
 
                 case Notation.SCIENTIFIC:
                     return $"{NotationBundler((float)current, module.SigCount)}";
@@ -3606,9 +3654,13 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             }
             return itemName;
         }
-        static string RawListItem(DisplayMeta mod, TallyItemSub sub, bool lit)
+        static string RawTallyItem(DisplayMeta mod, TallyItemSub sub, bool lit)
         {
             return $"{ItemNameCrop(sub.Type, lit)}{Split}{ParseItemTotal(sub.CurrentTotal, sub.TargetGoal, mod)}";
+        }
+        static string RawSlotItem(DisplayMeta mod, Slot slot, bool lit)
+        {
+            return $"{ItemNameCrop(slot.SnapShot.Type, lit)}{Split}{ParseItemTotal(slot.SnapShot.Amount, slot.Filter.Target, mod)}";
         }
         static string RawFilter(Filter filter)
         {
@@ -3626,32 +3678,9 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             if (link == null)
                 return "null slot!";
 
-            /*string linkName = $"{link.Inventory.CustomName}[{link.Index}]";
-            string output = $"{(link.InLink == null ? "No Input" : $"{link.InLink.Inventory.CustomName}[{link.InLink.Index}]")}";
-            string outLink = $"{(link.OutLink == null ? "No Output" : $"{link.OutLink.Inventory.CustomName}[{link.OutLink.Index}]")}";
-            int buffers = length - (linkName.Length + output.Length + outLink.Length);
-            if (buffers % 2 > 0)
-            {
-                linkName += " ";
-                buffers -= 1;
-            }
-            buffers /= 2;
-
-            for (int i = 0; i < buffers; i++)
-                output += " ";
-
-            output += linkName;
-
-            for (int i = 0; i < buffers; i++)
-                output += " ";
-
-            output += outLink;
-
-            return output;*/
-
-            return $"{(link.InLink == null ? "No Input" : $"{link.InLink.Inventory.CustomName}[{link.InLink.Index}]")}{Split}" +
-                $"{link.Inventory.CustomName}[{link.Index}]{Split}" +
-                $"{(link.OutLink == null ? "No Output" : $"{link.OutLink.Inventory.CustomName}[{link.OutLink.Index}]")}";
+            return $"{(link.InLink == null ? "No Input" : link.InLink.Inventory == null ? "Inlink dead" : $"{link.InLink.Inventory.CustomName}[{link.InLink.Index}]")}{Split}" +
+                $"{(link.Inventory == null ? "No Inventory" : $"{link.Inventory.CustomName}")}[{link.Index}]{Split}" +
+                $"{(link.OutLink == null ? "No Output" : link.OutLink.Inventory == null ? "Outlink dead" : $"{link.OutLink.Inventory.CustomName}[{link.OutLink.Index}]")}";
         }
         #endregion
 
