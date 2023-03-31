@@ -425,7 +425,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             PRODUCTION,
             SORT,
             TALLY,
-            LINK
+            PUSH
         }
         public enum Notation
         {
@@ -1227,16 +1227,19 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                     if (result == WorkResult.OVERHEAT)
                     {
+                        Dlog("OverHeat!");
                         break;
                     }
 
                     if ((Job.JobType == JobType.FIND || Job.JobType == JobType.MATCH) && result > 0)
                     {
+                        Dlog("Search Break!");
                         break;
                     }
 
                     if (Job.JobType == JobType.WORK && result == WorkResult.COMPLETE)
                     {
+                        Dlog("Work Complete!");
                         break;
                     }
                 }
@@ -1477,7 +1480,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         break;
 
                     case WorkType.LINK:
-                        if (Job.Requester is Slot && ((Slot)Job.Requester).Profile != null)
+                        if (Job.Requester is Slot && !((Slot)Job.Requester).CheckBroken())
                         {
                             SlotList = ((Slot)Job.Requester).Profile.Tallies[(int)Job.TargetGroup];
                         }
@@ -1691,7 +1694,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     else
                         Dlog("Good Pump!");
                 }
-                else if (SlotList[SIx].Filter.OUT == 1) // Only handle out-bound, let browser find items to pull
+                else if (SlotList[SIx].Filter.OUT == 1 && !SlotList[SIx].DumpQueued) // Only handle out-bound, let browser find items to pull
                 {
                     Dlog("Dumping Slot!");
                     SlotList[SIx].DumpQueued = true;
@@ -2363,7 +2366,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                                 if (Contains(nextline, "sort"))
                                     Meta.Mode = ScreenMode.SORT;
                                 if (Contains(nextline, "link"))
-                                    Meta.Mode = ScreenMode.LINK;
+                                    Meta.Mode = ScreenMode.PUSH;
                                 break;
 
                             case '@': // Target
@@ -2579,9 +2582,9 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                             //AppendLine(StrForm.FOOTER, "[TGM version 3.0]");
                             break;
 
-                        case ScreenMode.LINK:
-                            AppendLine(StrForm.HEADER, $"[Links ({Program.PushRequests.Count})]");
-                            LinkBuilder();
+                        case ScreenMode.PUSH:
+                            AppendLine(StrForm.HEADER, $"[Pushing ({Program.PushRequests.Count})]");
+                            PushBuilder();
                             break;
                     }
 
@@ -2912,7 +2915,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                 switch (Meta.Mode)
                 {
-                    case ScreenMode.LINK:
+                    case ScreenMode.PUSH:
                         LinkBuilder(target);
                         break;
 
@@ -2942,11 +2945,11 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
             }
 
-            void LinkBuilder()
+            void PushBuilder()
             {
                 foreach (Slot request in Program.PushRequests)
                 {
-                    AppendLine(StrForm.LINK, RawLink(request, CharCount));
+                    AppendLine(StrForm.LINK, RawPush(request, CharCount));
                 }
             }
 
@@ -3618,7 +3621,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             output += filter.OUT == 1 ? ":+OUT:" : filter.OUT == 0 ? ":=OUT:" : ":-OUT:";
             return output;
         }
-        static string RawLink(Slot link, int length)
+        static string RawPush(Slot link, int length)
         {
             if (link == null)
                 return "null slot!";
