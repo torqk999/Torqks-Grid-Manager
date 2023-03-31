@@ -255,7 +255,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         const string RefineryDefault =
             "! -in +out\n" +
             "ore: +in -out\n" +
-            "&reside\n" +
+            //"&reside\n" +
             "&convey\n" +
             "&fill\n" +
             "&empty";
@@ -312,15 +312,15 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         List<TallyItemType> AllItemTypes = new List<TallyItemType>();
 
         List<Inventory> Requesters = new List<Inventory>();
-        List<Slot> PumpRequests = new List<Slot>();
+        List<Slot> PushRequests = new List<Slot>();
 
         DisplayManager DisplayMan;
         TallyScanner Scanner;
         TallySorter Sorter;
         TallyLinker Linker;
-        TallyPumper Pumper;
-        ItemBrowser itemBrowser;
-        InventoryBrowser inventoryBrowser;
+        TallyPusher Pumper;
+        ItemBrowser Browser;
+        ItemDumper Dumper;
         AssemblyCleaner Cleaner;
         ProductionManager Producing;
         PowerManager Powering;
@@ -334,10 +334,10 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             DisplayMan = new DisplayManager(this);
             Scanner = new TallyScanner(this);
             Sorter = new TallySorter(this);
-            Pumper = new TallyPumper(this);
+            Pumper = new TallyPusher(this);
             Linker = new TallyLinker(this);
-            itemBrowser = new ItemBrowser(this);
-            inventoryBrowser = new InventoryBrowser(this);
+            Browser = new ItemBrowser(this);
+            Dumper = new ItemDumper(this);
             Cleaner = new AssemblyCleaner(this, false);
             Producing = new ProductionManager(this, false);
             Powering = new PowerManager(this, false);
@@ -349,8 +349,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 Sorter,
                 Linker,
                 Pumper,
-                itemBrowser,
-                inventoryBrowser,
+                Browser,
+                Dumper,
                 Cleaner,
                 Producing,
                 Powering,
@@ -476,7 +476,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             CHECK,
             SORT,
             LINK,
-            PUMP,
+            PUSH,
             BROWSE
         }
         public enum WorkResult
@@ -672,7 +672,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
             public bool SortQueued; // Called by Scanner
             public bool LinkQueued; // Called by Pumper
-            public bool BrowseQueued; // Called by Linker
+            public bool DumpQueued; // Called by Linker
 
             public Slot(RootMeta meta, Inventory inventory, MyInventoryItem literal, int index) : base(meta)
             {
@@ -690,18 +690,18 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                 bool inAllowed = ProfileCompare(Inventory.Profile, SnapShot.Type, out inTarget);
                 bool outAllowed = ProfileCompare(Inventory.Profile, SnapShot.Type, out outTarget, false);
-                bool wasPumping = Filter == null ? false : Filter.IsPumping();
+                bool wasPushing = Filter == null ? false : Filter.IsPushing();
 
                 Filter = new Filter(Program.ROOT, SnapShot.Type,
                     outTarget < inTarget ? outTarget : inTarget,  // Prioritize smaller value
                     inAllowed ? (Inventory.Profile.FILL ? 1 : 0) : -1,
                     outAllowed ? (Inventory.Profile.EMPTY ? 1 : 0) : -1);
 
-                if (!wasPumping && Filter.IsPumping())
-                    Program.PumpRequests.Add(this);
+                if (!wasPushing && Filter.IsPushing())
+                    Program.PushRequests.Add(this);
 
-                if (wasPumping && !Filter.IsPumping())
-                    Program.PumpRequests.Remove(this);
+                if (wasPushing && !Filter.IsPushing())
+                    Program.PushRequests.Remove(this);
             }
             bool ProfileUpdate()
             {
@@ -818,6 +818,10 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 SnapShot = check.Value;
                 return true;
             }
+            public bool CheckLinkable()
+            {
+                return Inventory is Producer && Filter.IsPushing();
+            }
             public bool CheckUnLinked()
             {
                 if (Filter.IN == 1 && InLink == null)
@@ -849,14 +853,10 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     Profile.Tallies[(int)TallyGroup.LOCKED].Add(this);
                 if (Filter.IN == 0 && Filter.OUT == 0)
                     Profile.Tallies[(int)TallyGroup.STORAGE].Add(this);
-                if (Filter.IN == 1 || Filter.OUT == 1)
-                {
-                    if (Inventory is Producer)
-                        Profile.Tallies[(int)TallyGroup.LINKABLE].Add(this);
-                    else
-                        Profile.Tallies[(int)TallyGroup.REQUEST].Add(this);
-                }
-
+                if (CheckLinkable())
+                    Profile.Tallies[(int)TallyGroup.LINKABLE].Add(this);
+                if (Filter.IsPushing())
+                    Profile.Tallies[(int)TallyGroup.REQUEST].Add(this);
                 if (Filter.IN > -1 || Filter.OUT > -1)
                     Profile.Tallies[(int)TallyGroup.AVAILABLE].Add(this);
             }
@@ -871,8 +871,10 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     Profile.Tallies[(int)TallyGroup.LOCKED].Remove(this);
                 if (Filter.IN == 0 && Filter.OUT == 0)
                     Profile.Tallies[(int)TallyGroup.STORAGE].Remove(this);
-                if (Filter.IN == 1 || Filter.OUT == 1)
-                    Profile.Tallies[(int)TallyGroup.REQUEST].Remove(this);
+                if (CheckLinkable())
+                    Profile.Tallies[(int)TallyGroup.LINKABLE].Add(this);
+                if (Filter.IsPushing())
+                    Profile.Tallies[(int)TallyGroup.REQUEST].Add(this);
                 if (Filter.IN > -1 || Filter.OUT > -1)
                     Profile.Tallies[(int)TallyGroup.AVAILABLE].Remove(this);
 
@@ -894,7 +896,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public int IN;
             public int OUT;
 
-            public bool IsPumping()
+            public bool IsPushing()
             {
                 return IN == 1 || OUT == 1;
             }
@@ -925,7 +927,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public bool DEFAULT_IN;
             public bool FILL;
             public bool EMPTY;
-            public bool RESIDE;
+            //public bool RESIDE;
             public bool CLEAN;
             public bool ACTIVE_CONVEYOR;
 
@@ -961,8 +963,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         if (Contains(nextline, "fill"))
                             FILL = !nextline.Contains("-");
 
-                        if (Contains(nextline, "res"))
-                            RESIDE = !nextline.Contains("-");
+                        //if (Contains(nextline, "res"))
+                        //    RESIDE = !nextline.Contains("-");
 
                         if (Contains(nextline, "clean"))
                             CLEAN = !nextline.Contains("-");
@@ -1481,8 +1483,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         }
                         break;
 
-                    case WorkType.PUMP:
-                        SlotList = Program.PumpRequests;
+                    case WorkType.PUSH:
+                        SlotList = Program.PushRequests;
                         break;
 
                     case WorkType.BROWSE:
@@ -1541,14 +1543,11 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     case WorkType.SCAN:
                         return SlotScan();
 
-                    case WorkType.PUMP:
-                        return SlotPump();
+                    case WorkType.PUSH:
+                        return SlotPush();
 
                     case WorkType.LINK:
                         return SlotLink();
-
-                    //case WorkType.PULL:
-                    //return SlotPull();
 
                     default:
                         return false;
@@ -1606,9 +1605,9 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                 if (queued.Filter.IN == 1 &&
                     queued.InLink == null &&
-                    match.Filter.OUT > -1 &&
-                    (match.Inventory.Profile.RESIDE ||
-                        !match.Inventory.IsEmpty()))
+                    match.Filter.OUT > -1) //&&
+                    //(match.Inventory.Profile.RESIDE ||
+                        //!match.Inventory.IsEmpty()))
                 {
                     Dlog($"In Link Made!");
 
@@ -1618,9 +1617,9 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                 if (queued.Filter.OUT == 1 &&
                     queued.OutLink == null &&
-                    match.Filter.IN > -1 &&
-                    (match.Inventory.Profile.RESIDE ||
-                        !match.Inventory.IsFull()))
+                    match.Filter.IN > -1) //&&
+                    //(match.Inventory.Profile.RESIDE ||
+                        //!match.Inventory.IsFull()))
                 {
                     Dlog($"Out Link Made!");
 
@@ -1667,27 +1666,37 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 Dlog("Slot Scanned!");
                 return false; // Keep Working!
             }
-            bool SlotPump()
+            bool SlotPush()
             {
-                if (SlotList[SIx].Inventory == null)
+                if (SlotList[SIx].CheckBroken() /*Inventory == null*/)
                 {
-                    Dlog("Dead Slot, removing from pump requesters...");
-
-                    SlotList.RemoveAt(SIx);
-                    Job.SearchCount = SlotList.Count;
-                    SIx--;
+                    //Dlog("Broken Slot, removing from pump requesters...");
+                    Dlog("Broken Slot, requires removal...");
+                    //SlotList.RemoveAt(SIx);
+                    //Job.SearchCount = SlotList.Count;
+                    //SIx--;
                     return false;
                 }
 
-                Dlog("Pumping...");
+                Dlog("Pushing...");
 
-                if (!SlotList[SIx].Pump() && !SlotList[SIx].LinkQueued)
+                if (SlotList[SIx].CheckLinkable())
                 {
-                    Dlog("Requesting Links!");
-                    SlotList[SIx].LinkQueued = true;
-                    Program.Linker.Queue.Add(SlotList[SIx]);
+                    if (!SlotList[SIx].Pump() && !SlotList[SIx].LinkQueued)
+                    {
+                        Dlog("Requesting Links!");
+                        SlotList[SIx].LinkQueued = true;
+                        Program.Linker.Queue.Add(SlotList[SIx]);
+                    }
+                    else
+                        Dlog("Good Pump!");
                 }
-
+                else if (SlotList[SIx].Filter.OUT == 1) // Only handle out-bound, let browser find items to pull
+                {
+                    Dlog("Dumping Slot!");
+                    SlotList[SIx].DumpQueued = true;
+                    Program.Dumper.Queue.Add(SlotList[SIx]);
+                }
                 return false; // Keep Working!
             }
         }
@@ -1828,7 +1837,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 Name = "LINK";
 
                 SlotLink = new SlotWork(prog.ROOT, this);
-                SlotLink.Job = new JobMeta(JobType.WORK, WorkType.LINK, WorkResult.COMPLETE, WorkResult.NONE_CONTINUE, TallyGroup.LINKABLE);
+                SlotLink.Job = new JobMeta(JobType.WORK, WorkType.LINK, WorkResult.COMPLETE, WorkResult.NONE_CONTINUE, TallyGroup.AVAILABLE);
             }
             public override void Run()
             {
@@ -1858,12 +1867,13 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         return false;
 
                     case WorkResult.NONE_CONTINUE: // Didn't find any links, send to inventory browser
+                        Dlog("Links missing!");
 
-                        if (Queue[0].OutLink == null && Queue[0].Filter.OUT == 1 && !Queue[0].BrowseQueued)
+                        if (Queue[0].OutLink == null && Queue[0].Filter.OUT == 1 && !Queue[0].DumpQueued)
                         {
-                            Dlog("Adding to browse queue...");
-                            Program.inventoryBrowser.Queue.Add(Queue[0]);
-                            Queue[0].BrowseQueued = true;
+                            Dlog("Adding to dump queue...");
+                            Program.Dumper.Queue.Add(Queue[0]);
+                            Queue[0].DumpQueued = true;
                         }
 
                         return true;
@@ -1914,16 +1924,15 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             }*/
 
         }
-        public class InventoryBrowser : QueueOp
+        public class ItemDumper : QueueOp
         {
-
-            public InvWork InventoryCheck;
-            public InventoryBrowser(Program prog, bool active = true) : base(prog, active)
+            public InvWork InventorySearch;
+            public ItemDumper(Program prog, bool active = true) : base(prog, active)
             {
-                InventoryCheck = new InvWork(prog.ROOT, this);
-                InventoryCheck.Job = new JobMeta(JobType.FIND, WorkType.BROWSE, WorkResult.COMPLETE, WorkResult.NONE_CONTINUE);
+                InventorySearch = new InvWork(prog.ROOT, this);
+                InventorySearch.Job = new JobMeta(JobType.FIND, WorkType.BROWSE, WorkResult.COMPLETE, WorkResult.NONE_CONTINUE);
 
-                Name = "INVENTORY BROWSE";
+                Name = "DUMP";
             }
 
             public override bool HasWork()
@@ -1935,12 +1944,12 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             {
                 base.Run();
 
-                InventoryCheck.Job.Requester = Queue[0];
-                InventoryCheck.SetSearchCount();
+                InventorySearch.Job.Requester = Queue[0];
+                InventorySearch.SetSearchCount();
 
                 if (Browse())
                 {
-                    Queue[0].BrowseQueued = false;
+                    Queue[0].DumpQueued = false;
                     Queue.RemoveAt(0);
                 }
             }
@@ -1949,7 +1958,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             {
                 Slot browser = Queue[0];
 
-                switch (InventoryCheck.WorkLoad())
+                switch (InventorySearch.WorkLoad())
                 {
                     case WorkResult.DEAD_SLOT:
                         Dlog("DEAD!");
@@ -1961,8 +1970,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                     case WorkResult.COMPLETE:
                         Dlog("Eligable Inventory Found!");
-                        Inventory target = InventoryCheck.Current();
-                        target.Pulled = ForceTransfer(target, InventoryCheck.DestinationTarget, browser);
+                        Inventory target = InventorySearch.Current();
+                        target.Pulled = ForceTransfer(target, InventorySearch.DestinationTarget, browser);
                         Dlog($"Transfer success: {target.Pulled}");
                         return true;
 
@@ -2046,37 +2055,37 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 }
             }
         }
-        public class TallyPumper : Op
+        public class TallyPusher : Op
         {
-            public SlotWork SlotPump;
+            public SlotWork SlotPush;
 
-            public TallyPumper(Program prog, bool active = true) : base(prog, active)
+            public TallyPusher(Program prog, bool active = true) : base(prog, active)
             {
-                Name = "PUMP";
+                Name = "PUSH";
 
-                SlotPump = new SlotWork(prog.ROOT, this);
-                SlotPump.Job = new JobMeta(JobType.WORK, WorkType.PUMP, WorkResult.COMPLETE, WorkResult.NONE_CONTINUE);
+                SlotPush = new SlotWork(prog.ROOT, this);
+                SlotPush.Job = new JobMeta(JobType.WORK, WorkType.PUSH, WorkResult.COMPLETE, WorkResult.NONE_CONTINUE);
             }
 
             public override bool HasWork()
             {
-                WorkCount = Program.PumpRequests.Count;
-                return Program.PumpRequests.Count > 0;
+                WorkCount = Program.PushRequests.Count;
+                return Program.PushRequests.Count > 0;
             }
             public override void Run()
             {
                 base.Run();
 
-                SlotPump.SetSearchCount();
+                SlotPush.SetSearchCount();
 
-                if (Pumping())
+                if (Push())
                 {
-                    SlotPump.SIx = 0;
+                    SlotPush.SIx = 0;
                 }
             }
-            bool Pumping()
+            bool Push()
             {
-                switch (SlotPump.WorkLoad())
+                switch (SlotPush.WorkLoad())
                 {
                     case WorkResult.OVERHEAT:
                         Dlog("OVER-HEAT!");
@@ -2115,7 +2124,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 SlotFind.Job = new JobMeta(JobType.FIND, WorkType.BROWSE, WorkResult.FIND_SLOT, WorkResult.NONE_CONTINUE, TallyGroup.AVAILABLE);
                 SlotMatch.Chain = SlotFind;
 
-                Name = "ITEM BROWSE";
+                Name = "BROWSE";
             }
 
             public override bool HasWork()
@@ -2571,7 +2580,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                             break;
 
                         case ScreenMode.LINK:
-                            AppendLine(StrForm.HEADER, $"[Links ({Program.PumpRequests.Count})]");
+                            AppendLine(StrForm.HEADER, $"[Links ({Program.PushRequests.Count})]");
                             LinkBuilder();
                             break;
                     }
@@ -2935,7 +2944,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
             void LinkBuilder()
             {
-                foreach (Slot request in Program.PumpRequests)
+                foreach (Slot request in Program.PushRequests)
                 {
                     AppendLine(StrForm.LINK, RawLink(request, CharCount));
                 }
@@ -3122,13 +3131,11 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public override void Setup()
             {
                 base.Setup();
-                if (Profile.FILL)
+                if (Profile.FILL) // Only append pullers, let the Pusher handle dumping
                     Program.Requesters.Add(this);
                 else
                     Program.Requesters.Remove(this);
             }
-
-
 
             public bool IsFull(bool input = true)
             {
@@ -3243,7 +3250,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 AssemblerBlock = (IMyAssembler)meta.Block;
                 AssemblerBlock.CooperativeMode = false;
                 Profile.CLEAN = true;
-                Profile.RESIDE = true;
+                //Profile.RESIDE = true;
             }
         }
         public class Refinery : Producer
@@ -3344,7 +3351,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         }
         static MyFixedPoint? AllowableReturn(MyFixedPoint destTarget, Slot moving)
         {
-            MyFixedPoint allow = moving.Filter.Target > 0 ? moving.SnapShot.Amount - moving.Filter.Target : moving.Inventory.Profile.RESIDE ? moving.SnapShot.Amount - 1 : 0;
+            MyFixedPoint allow = moving.Filter.Target > 0 ? moving.SnapShot.Amount - moving.Filter.Target : moving.CheckLinkable() /*Inventory.Profile.RESIDE*/ ? moving.SnapShot.Amount - 1 : 0;
             MyFixedPoint? output = MaximumReturn(destTarget, allow);
             return output.Value != 0 ? output.Value < 0 ? 0 : output : null;
         }
@@ -3667,7 +3674,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             AllItemTypes.Clear();
 
             Requesters.Clear();
-            PumpRequests.Clear();
+            PushRequests.Clear();
         }
         void RunSystemBuild()
         {
@@ -3856,8 +3863,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 case "MOVE":
                     Pumper.Toggle();
                     Linker.Toggle();
-                    itemBrowser.Toggle();
-                    inventoryBrowser.Toggle();
+                    Browser.Toggle();
+                    Dumper.Toggle();
                     break;
 
                 case "DISPLAY":
