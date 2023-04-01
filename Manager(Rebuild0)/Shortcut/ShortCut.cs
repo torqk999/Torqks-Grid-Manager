@@ -204,28 +204,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             Resources.Remove((Resource)block);
 
         Blocks.Remove(block);
-    }
-    static bool FilterCompare(Filter A, MyItemType B)
-    {
-        return FilterCompare(
-            A.ItemID[0], A.ItemID[1],
-            B.TypeId.Replace("MyObjectBuilder_", ""),
-            B.SubtypeId);
-    }
-    */
-    /*static IMyInventory PullInventory(Inventory inventory, bool input = true)
-        {
-            if (inventory is Producer)
-            {
-                IMyProductionBlock prodBlock = ((Producer)inventory).ProdBlock;
-                return input ? prodBlock.InputInventory : prodBlock.OutputInventory;
-            }
-            if (inventory != null)
-            {
-                return inventory.Owner.GetInventory(0);
-            }
-            return null;
-        }*/
+    }*/
+
     #endregion
 
     partial class Program : MyGridProgram
@@ -242,11 +222,11 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
         const int DefScrollDelay = 1;
         const int DefSigCount = 2;
-        const int SEARCH_CAP = 30;
-        const int BUILD_CAP = 20;
-        static int[] MONO_RATIO = {20, 30};
+        const int OP_CAP_MAX = 50;
+        const int OP_CAP_DEF = 30;
+        const int OP_CAP_MIN = 10;
 
-        static UpdateFrequency INIT_FREQ = UpdateFrequency.Update1;
+        static UpdateFrequency INIT_FREQ = UpdateFrequency.None;
         /// WARNING!! DO NOT GO FURTHER USER!! ///
 
         #region DEFAULTS
@@ -254,7 +234,6 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         const string RefineryDefault =
             "! -in +out\n" +
             "ore: +in -out\n" +
-            //"&reside\n" +
             "&convey\n" +
             "&fill\n" +
             "&empty";
@@ -265,7 +244,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         UpdateFrequency RUN_FREQ;
 
         bool LIT_DEFS = false;
-        bool ShowProdBuilding = false;
+        //bool ShowProdBuilding = false;
 
         bool DETECTED;
         bool BUILT;
@@ -273,6 +252,9 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         bool SCANNED;
         bool SWEPT;
 
+        const string LEGACY_TYPE_PREFIX = "MyObjectBuilder_";
+        const string Seperator = "/";
+        const char Split = '/';
         static readonly char[] EchoLoop =
         {
             '%',
@@ -280,18 +262,18 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             '#',
             '&'
         };
-        const char Split = '/';
-        const string Seperator = "/";
         const int EchoMax = 4;
-
-        string[] InputBuffer = new string[2];
+        static int[] MONO_RATIO = { 20, 30 };
+        
+        string[] InputBuffer;
         StringBuilder Debug = new StringBuilder();
         StringBuilder EchoBuilder = new StringBuilder();
         IMyTextSurface mySurface;
         RootMeta ROOT;
 
         int ROOT_INDEX = 0;
-        int SEARCH_COUNT = 0;
+        int OP_CAP = OP_CAP_DEF;
+        int OP_COUNT = 0;
         int EchoCount = 0;
         int CurrentOp = -1;
         int AuxIndex = 0;
@@ -312,12 +294,13 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
         List<Inventory> PullRequests = new List<Inventory>();
         List<Slot> MoveRequests = new List<Slot>();
+        List<Slot> PumpRequests = new List<Slot>();
 
         DisplayManager DisplayMan;
         TallyScanner Scanner;
         TallySorter Sorter;
-        TallyLinker Linker;
-        TallyPusher Pusher;
+        TallyMatcher Mover;
+        TallyPumper Pumper;
         ItemBrowser Browser;
         ItemDumper Dumper;
         AssemblyCleaner Cleaner;
@@ -333,8 +316,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             DisplayMan = new DisplayManager(this);
             Scanner = new TallyScanner(this);
             Sorter = new TallySorter(this);
-            Pusher = new TallyPusher(this);
-            Linker = new TallyLinker(this);
+            Pumper = new TallyPumper(this);
+            Mover = new TallyMatcher(this);
             Browser = new ItemBrowser(this);
             Dumper = new ItemDumper(this);
             Cleaner = new AssemblyCleaner(this, false);
@@ -346,8 +329,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 DisplayMan,
                 Scanner,
                 Sorter,
-                Linker,
-                Pusher,
+                Mover,
+                Pumper,
                 Browser,
                 Dumper,
                 Cleaner,
@@ -391,9 +374,9 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         }
         public bool CallCounter()
         {
-            SEARCH_COUNT++;
-            bool capped = SEARCH_COUNT >= SEARCH_CAP;
-            SEARCH_COUNT = capped ? 0 : SEARCH_COUNT;
+            OP_COUNT++;
+            bool capped = OP_COUNT >= OP_CAP;
+            OP_COUNT = capped ? 0 : OP_COUNT;
             return capped;
         }
 
@@ -466,37 +449,31 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         {
             WORK,
             FIND,
-            MATCH
+            EXISTS
         }
         public enum WorkType
         {
             NONE,
             SCAN,
-            CHECK,
+            EXISTS,
             SORT,
-            LINK,
-            MOVE,
+            MATCH,
+            PUMP,
             BROWSE
         }
         public enum WorkResult
         {
-            ERROR = -3,
-            DEAD_SLOT = -2,
+            ERROR = -2,
             OVERHEAT = -1,
 
-            //NONE = 0,
             NONE_CONTINUE = 0,
             COMPLETE = 1,
 
-            //MATCH_NONE = 0,
-            //MATCH_TYPE = 2,
-            //MATCH_SUB = 3,
-            MATCH_SLOT = 2,
-
-            //FIND_NONE = 0,
-            FIND_TYPE = 3,
-            FIND_SUB = 4,
-            FIND_SLOT = 5,
+            INVENTORY_FOUND = 2,
+            TYPE_FOUND = 3,
+            SUB_FOUND = 4,
+            SLOT_FOUND = 5,
+            EXISTS = 6,
         }
         #endregion
 
@@ -552,16 +529,16 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         }
         public struct ProdMeta
         {
-            public MyDefinitionId Def;
-            public string AssemblerType;
-            public Filter Filter;
+            public string BluePrintDefintion;
+            public string ItemDefinition;
+            public int TargetGoal;
             public RootMeta Root;
 
-            public ProdMeta(RootMeta root, MyDefinitionId def, string prodIdString, int target = 0)
+            public ProdMeta(RootMeta root, string def, int target, string itemDef = null)
             {
-                Def = def;
-                AssemblerType = prodIdString;
-                Filter = new Filter(root, def, target);
+                BluePrintDefintion = def;
+                ItemDefinition = itemDef;
+                TargetGoal = target;
                 Root = root;
             }
         }
@@ -595,10 +572,10 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         public struct JobMeta
         {
             public Root Requester;
-            public string TypeCompare;
-            public string SubCompare;
-            public MyItemType? TypeMatch;
-            public Slot SlotMatch;
+            //public string TypeCompare;
+            //public string SubCompare;
+            public Compare Compare;
+            public MyItemType? ItemTypeCompare;
 
             public int SearchCount;
             public int WIxA;
@@ -614,7 +591,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 JobType job = JobType.WORK,
                 WorkType work = WorkType.NONE,
                 WorkResult success = WorkResult.COMPLETE,
-                WorkResult fail = WorkResult.ERROR,
+                WorkResult fail = WorkResult.NONE_CONTINUE,
                 TallyGroup target = TallyGroup.ALL)
             {
                 JobType = job;
@@ -624,10 +601,10 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 TargetGroup = target;
 
                 Requester = null;
-                TypeCompare = null;
-                SubCompare = null;
-                TypeMatch = null;
-                SlotMatch = null;
+                Compare = new Compare();
+                //TypeCompare = null;
+                //SubCompare = null;
+                ItemTypeCompare = null;
 
                 WIxA = 0;
                 WIxB = 0;
@@ -640,17 +617,71 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     return;
 
                 Requester = slot;
-                TypeCompare = slot.SnapShot.Type.TypeId;
-                SubCompare = slot.SnapShot.Type.SubtypeId;
+                Compare = new Compare(slot.SnapShot.Type);
             }
 
             public void CopyJobMeta(JobMeta source)
             {
                 TargetGroup = source.TargetGroup;
-                Requester = source.SlotMatch == null ? source.Requester : source.SlotMatch;
-                TypeCompare = source.TypeCompare;
-                SubCompare = source.SubCompare;
-                //SlotMatch = source.SlotMatch;
+                Requester = source.Requester;
+                Compare = source.Compare;
+            }
+        }
+        public struct Compare
+        {
+            public string type;
+            public string sub;
+
+            public Compare(string typeId, string subId)
+            {
+                type = typeId == null || typeId == "" ? "any" : typeId;
+                sub = subId == null || typeId == "" ? "any" : subId;
+            }
+
+            public Compare(string combo)
+            {
+                type = "any";
+                sub = "any";
+
+                try
+                {
+                    string[] strings = combo.Split(Split);
+                    type = strings[0];
+                    sub = strings[1];
+
+                    type = type == "" ? "any" : type;
+                    sub = sub == "" ? "any" : sub;
+                }
+                catch { }
+            }
+
+            public Compare(MyDefinitionId defintion)
+            {
+                type = defintion.TypeId.ToString();
+                sub = defintion.SubtypeId.ToString();
+            }
+
+            public string Type()
+            {
+                return type.Replace(LEGACY_TYPE_PREFIX, "");
+            }
+        }
+        public struct Flow
+        {
+            public MyFixedPoint? FILL, KEEP;
+            public int IN, OUT;
+
+            public Flow(MyFixedPoint? fILL, MyFixedPoint? eMPTY, int iN, int oUT)
+            {
+                FILL = fILL;
+                KEEP = eMPTY;
+                IN = iN;
+                OUT = oUT;
+            }
+
+            public bool IsMoving()
+            {
+                return IN == 1 || OUT == 1;
             }
         }
         #endregion
@@ -658,201 +689,230 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         #region VIRTUALS
         public class Slot : Root
         {
-            public int Index;
+            public int ItemIndex;
+            public int InvIndex;
+
+            public IMyInventory Container;
 
             public Inventory Inventory;
             public TallyItemSub Profile;
-            public Filter Filter;
-
             public Slot InLink;
             public Slot OutLink;
 
+            public Flow Flow;
             public MyInventoryItem SnapShot;
-
+            
             public bool SortQueued; // Called by Scanner
-            public bool LinkQueued; // Called by Pumper
             public bool DumpQueued; // Called by Linker
 
-            public Slot(RootMeta meta, Inventory inventory, MyInventoryItem literal, int index) : base(meta)
+            public Slot(RootMeta meta, Inventory inventory, int inventoryIndex, int itemIndex) : base(meta)
             {
+                ItemIndex = itemIndex;
+                InvIndex = inventoryIndex;
+
                 Inventory = inventory;
-                Index = index;
-                SnapShot = literal;
+                Container = Inventory.Owner.GetInventory(InvIndex);
+                SnapShot = Container.GetItemAt(itemIndex).Value;
+
                 SlotFilter();
             }
             void SlotFilter()
             {
-                if (CheckDead())
+                if (Inventory == null)
                     return;
 
                 MyFixedPoint? inTarget, outTarget;
 
                 bool inAllowed = ProfileCompare(Inventory.Profile, SnapShot.Type, out inTarget);
                 bool outAllowed = ProfileCompare(Inventory.Profile, SnapShot.Type, out outTarget, false);
-                bool wasPushing = Filter == null ? false : Filter.IsPushing();
+                bool wasPushing = Flow.IsMoving();
+                bool wasPumping = CheckLinkable();
 
-                Filter = new Filter(Program.ROOT, SnapShot.Type,
-                    MaximumReturn(inTarget, outTarget),
-                    //outTarget < inTarget ? outTarget : inTarget,  // Prioritize smaller value
+                Flow = new Flow(inTarget, outTarget,
                     inAllowed ? (Inventory.Profile.FILL ? 1 : 0) : -1,
-                    outAllowed ? (Inventory.Profile.EMPTY ? 1 : 0) : -1); ;
+                    outAllowed ? (Inventory.Profile.EMPTY ? 1 : 0) : -1);
 
-                if (!wasPushing && Filter.IsPushing())
+                //Filter = new Filter(Program.ROOT, SnapShot.Type, flow); ;
+
+                if (!wasPushing && Flow.IsMoving())
                     Program.MoveRequests.Add(this);
 
-                if (wasPushing && !Filter.IsPushing())
+                if (wasPushing && !Flow.IsMoving())
                     Program.MoveRequests.Remove(this);
-            }
-            bool ProfileUpdate()
-            {
-                if (Profile != null)
-                {
-                    MyFixedPoint delta;
 
-                    if (!CheckSlot(out delta))
-                    {
-                        UnsyncFromProfile(delta);
-                        SlotFilter();
-                        return false;
-                    }
+                if (!wasPumping && CheckLinkable())
+                    Program.PumpRequests.Add(this);
 
-                    else
-                    {
-                        Profile.Update(delta);
-                        return true;
-                    }
-                }
-                return false;
+                if (wasPumping && !CheckLinkable())
+                    Program.PumpRequests.Remove(this);
             }
 
             public string InventoryName()
             {
-                return $"{((Inventory == null) ? "No inventory" : $"{Inventory.CustomName}[{Index}]")}";
+                return $"{((Inventory == null) ? "No inventory" : $"{Inventory.CustomName}[{ItemIndex}]")}";
             }
 
             public void Update()
             {
+                MyFixedPoint delta;
+
+                if (!UpdateSlot(out delta))
+                {
+                    Unlink();
+                    UnsyncFromProfile();
+                    SlotFilter();
+                }
+
                 if (SortQueued)
                     return;
 
-                if (!ProfileUpdate())
-                    QueueSort();
+                if (Profile != null)
+                {
+                    Profile.Update(delta);
+                }
+                else
+                {
+                    Program.Sorter.Queue.Add(this);
+                    SortQueued = true;
+                }  
             }
-            void QueueSort()
+            public void Pump()
             {
-                Program.Sorter.Queue.Add(this);
-                SortQueued = true;
-            }
-            public bool Pump()
-            {
-                if (CheckBroken())
-                    return false;
+                if (!Refresh())
+                    return;
 
-                bool satisfied = true;
-
-                if (Filter.IN == 1)
+                if (Flow.IN == 1)
                 {
                     if (InLink == null)
                     {
-                        satisfied = false;
+                        Dlog("No Inlink!");
                     }
-                    else if (InLink.CheckBroken())
+                    else if (!InLink.Refresh())
                     {
+                        Dlog("Bad Inlink!");
                         InLink = null;
-                        satisfied = false;
                     }
                     else if (!TallyTransfer(InLink, this))
                     {
-                        InLink = null;
-                        satisfied = false;
+                        Dlog("Pump-in fail!");
+                        //InLink = null; // Special logic for breaking? maybe a fail count?
                     }
                     else
                     {
-
+                        Dlog("Pump-in success!");
                     }
                 }
 
-                if (Filter.OUT == 1)
+                if (Flow.OUT == 1)
                 {
                     if (OutLink == null)
                     {
-                        satisfied = false;
+                        Dlog("No Outlink!");
                     }
-
-                    else if (OutLink.CheckBroken())
+                    else if (!OutLink.Refresh())
                     {
+                        Dlog("Bad Outlink!");
                         OutLink = null;
-                        satisfied = false;
                     }
-
                     else if (!TallyTransfer(this, OutLink))
                     {
-                        OutLink = null;
-                        satisfied = false;
+                        Dlog("Pump-out fail!");
+                        //OutLink = null;
                     }
                     else
                     {
-
+                        Dlog("Pump-out success!");
                     }
                 }
-
-                return satisfied;
             }
-            public bool CheckSlot(out MyFixedPoint delta)
+            public bool UpdateSlot(out MyFixedPoint delta)
             {
+                MyInventoryItem? check;
                 delta = SnapShot.Amount;
-                if (Inventory == null)
-                {
 
+                if (!CheckSlot(out check))
                     return false;
-                }
-
-                MyInventoryItem? check = Inventory.PullItem(Index);
-                if (!check.HasValue)
-                {
-
-                    return false;
-                }
-
-                if (check.Value.Type != SnapShot.Type)
-                {
-
-                    SnapShot = check.Value;
-                    return false;
-                }
 
                 delta = check.Value.Amount - SnapShot.Amount;
                 SnapShot = check.Value;
                 return true;
             }
+
+            public MyInventoryItem? PullItem()
+            {
+                return Container == null ? null : Container.GetItemAt(ItemIndex);
+            }
+            public bool CheckSlot(out MyInventoryItem? check)
+            {
+                check = PullItem();
+                return check.HasValue && check.Value.Type == SnapShot.Type;
+            }
+            
+            public bool Refresh() // Only successful check updates the slot. Safe operational check
+            {
+                MyInventoryItem? check;
+                bool result = CheckSlot(out check);
+                SnapShot = result ? check.Value : SnapShot; // leave old Snapshot if slot broken
+                Dlog($"Slot {(result ? "Refreshed!" : "Broken!")}");
+                return result;
+            }
+            public bool CheckOverride()
+            {
+                return Inventory is Producer && Flow.IN == 1;
+            }
             public bool CheckLinkable()
             {
-                return Inventory is Producer && Filter.IsPushing();
+                return Inventory is Producer && Flow.IsMoving();
             }
-            public bool CheckUnLinked()
+            public bool CheckLinked()
             {
-                if (Filter.IN == 1 && InLink == null)
+                if (Flow.IN == 1 && InLink == null)
                 {
                     Dlog("Inbound Unlinked!");
-                    return true;
+                    return false;
                 }
 
-                if (Filter.OUT == 1 && OutLink == null)
+                if (Flow.OUT == 1 && OutLink == null)
                 {
                     Dlog("Outbound Unlinked!");
-                    return true;
+                    return false;
                 }
 
                 Dlog("Fully Linked!");
-                return false;
+                return true;
             }
-            public bool CheckDead()
+            public bool CheckSorted()
             {
-                return Inventory == null;
+                return Profile != null;
             }
             public bool CheckBroken()
             {
-                return Inventory == null || Profile == null;
+                return Refresh() || !CheckSorted();
+            }
+            public bool CheckFull()
+            {
+                return CheckFilled() || Inventory.CheckFull(Container);
+            }
+            public bool CheckFilled()
+            {
+                return /*Filter.IN == 1 && */Flow.FILL.HasValue && SnapShot.Amount >= Flow.FILL;
+            }
+            public bool CheckEmpty()
+            {
+                return CheckEmptied() || Inventory.CheckEmpty(Container);
+            }
+            public bool CheckEmptied()
+            {
+                return /*Filter.OUT == 1 && */Flow.KEEP.HasValue && SnapShot.Amount <= Flow.KEEP;
+            }
+            public void Kill()
+            {
+                Unlink();
+                UnsyncFromProfile();
+                Inventory.ContainedSlots[InvIndex].RemoveAt(ItemIndex);
+                Inventory.AllSlots.Remove(this);
+                Inventory = null;
+                Container = null;
             }
             public void SyncTallyToProfile(TallyItemSub profile)
             {
@@ -863,74 +923,73 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                 Profile.Tallies[(int)TallyGroup.ALL].Add(this);
 
-                if (Filter.IN == -1 && Filter.OUT == -1)
+                if (Flow.IN == -1 && Flow.OUT == -1)
                     Profile.Tallies[(int)TallyGroup.LOCKED].Add(this);
-                if (Filter.IN == 0 && Filter.OUT == 0)
+                if (Flow.IN == 0 && Flow.OUT == 0)
                     Profile.Tallies[(int)TallyGroup.STORAGE].Add(this);
                 if (CheckLinkable())
                     Profile.Tallies[(int)TallyGroup.LINKABLE].Add(this);
-                if (Filter.IsPushing())
+                if (Flow.IsMoving())
                     Profile.Tallies[(int)TallyGroup.REQUEST].Add(this);
-                if (Filter.IN > -1 || Filter.OUT > -1)
+                if (Flow.IN > -1 || Flow.OUT > -1)
                     Profile.Tallies[(int)TallyGroup.AVAILABLE].Add(this);
             }
-            private void UnsyncFromProfile(MyFixedPoint remaining)
+            void UnsyncFromProfile()
             {
                 if (Profile == null)
                     return;
 
                 Profile.Tallies[(int)TallyGroup.ALL].Remove(this);
 
-                if (Filter.IN == -1 && Filter.OUT == -1)
+                if (Flow.IN == -1 && Flow.OUT == -1)
                     Profile.Tallies[(int)TallyGroup.LOCKED].Remove(this);
-                if (Filter.IN == 0 && Filter.OUT == 0)
+                if (Flow.IN == 0 && Flow.OUT == 0)
                     Profile.Tallies[(int)TallyGroup.STORAGE].Remove(this);
                 if (CheckLinkable())
-                    Profile.Tallies[(int)TallyGroup.LINKABLE].Add(this);
-                if (Filter.IsPushing())
-                    Profile.Tallies[(int)TallyGroup.REQUEST].Add(this);
-                if (Filter.IN > -1 || Filter.OUT > -1)
+                    Profile.Tallies[(int)TallyGroup.LINKABLE].Remove(this);
+                if (Flow.IsMoving())
+                    Profile.Tallies[(int)TallyGroup.REQUEST].Remove(this);
+                if (Flow.IN > -1 || Flow.OUT > -1)
                     Profile.Tallies[(int)TallyGroup.AVAILABLE].Remove(this);
 
-                Profile.Update(-remaining);
+                Profile.Update(-SnapShot.Amount);
                 Profile = null;
             }
-
-            public void Kill()
+            void Unlink()
             {
-                UnsyncFromProfile(SnapShot.Amount);
-                Inventory.Slots.Remove(this);
-                Inventory = null;
+                if (InLink != null)
+                {
+                    InLink.OutLink = null;
+                    InLink = null;
+                }
+
+                if (OutLink != null)
+                {
+                    OutLink.InLink = null;
+                    OutLink = null;
+                }
             }
         }
         public class Filter : Root
         {
-            public string[] ItemID = new string[2];
-            public MyFixedPoint? Target;
-            public int IN;
-            public int OUT;
+            public Compare Compare;
+            public Flow Flow;
 
-            public bool IsPushing()
+            public bool IsMoving()
             {
-                return IN == 1 || OUT == 1;
+                return Flow.IN == 1 || Flow.OUT == 1;
             }
-            Filter(RootMeta meta, MyFixedPoint? target = null, int @in = 0, int @out = 0) : base(meta)
+            Filter(RootMeta meta, Flow flow) : base(meta)
             {
-                Target = target;
-                IN = @in;
-                OUT = @out;
+                Flow = flow;
             }
-            public Filter(RootMeta meta, string combo, MyFixedPoint? target, int IN = 0, int OUT = 0) : this(meta, target, IN, OUT)
+            public Filter(RootMeta meta, string combo, Flow flow) : this(meta, flow)
             {
-                GenerateFilters(combo, ref ItemID);
+                Compare = new Compare(combo);
             }
-            public Filter(RootMeta meta, MyItemType type, MyFixedPoint? target, int IN = 0, int OUT = 0) : this(meta, target, IN, OUT)
+            public Filter(RootMeta meta, MyDefinitionId definition, Flow flow) : this(meta, flow)
             {
-                GenerateFilters(type, ref ItemID);
-            }
-            public Filter(RootMeta meta, MyDefinitionId id, MyFixedPoint? target, int IN = 0, int OUT = 0) : this(meta, target, IN, OUT)
-            {
-                GenerateFilters(id, ref ItemID);
+                Compare = new Compare(definition);
             }
         }
         public class FilterProfile : Root
@@ -993,7 +1052,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     AppendFilter(nextline);
                 }
 
-                Filters.RemoveAll(x => x.ItemID[0] == "any" && x.ItemID[1] == "any");  // Redundant. Refer to inventory default mode
+                Filters.RemoveAll(x => x.Compare.type == "any" && x.Compare.sub == "any");  // Redundant. Refer to inventory default mode
 
                 return true;
             }
@@ -1006,13 +1065,14 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 if (lineblocks.Length < 2)  // There must be more than one block to have filter candidate and desired update
                     return;
 
-                string itemID = "null"; // Default target, don't update any filters
+                string itemID = null; // Default target, don't update any filters
                 bool bDefault = false;
                 bool bIn = true;
                 bool bOut = true;
-                MyFixedPoint? target = null;
+                MyFixedPoint? inTarget = null;
+                MyFixedPoint? outTarget = null;
 
-                if (lineblocks[0].Contains(":")) // Filter insignia
+                if (lineblocks[0].Contains(Split)) // Filter insignia
                 {
                     itemID = lineblocks[0];
                 }
@@ -1027,7 +1087,14 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     switch (lineblocks[i][0])
                     {
                         case '#':   // set a new target value
-                            target = (MyFixedPoint)float.Parse(lineblocks[i].Remove(0, 1));
+                            string[] targets = lineblocks[i].Remove(0, 1).Split(Split);
+                            try
+                            {
+                                inTarget = (MyFixedPoint)float.Parse(targets[0]);
+                                outTarget = (MyFixedPoint)float.Parse(targets[1]);
+                            }
+                            catch { }
+                            //inTarget = (MyFixedPoint)float.Parse(lineblocks[i].Remove(0, 1));
                             break;
 
                         case '+':
@@ -1048,9 +1115,10 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     DEFAULT_OUT = bOut;
                 }
 
-                if (itemID != "null")
+                if (itemID != null)
                 {
-                    Filters.Add(new Filter(Program.ROOT, itemID, target, bIn ? FILL ? 1 : 0 : -1, bOut ? EMPTY ? 1 : 0 : -1));
+                    Flow flow = new Flow(inTarget, outTarget, bIn ? FILL ? 1 : 0 : -1, bOut ? EMPTY ? 1 : 0 : -1);
+                    Filters.Add(new Filter(Program.ROOT, itemID, flow));
                 }
 
             }
@@ -1064,6 +1132,11 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             {
                 SubTypes.Add(first);
                 TypeId = first.Type.TypeId;
+            }
+
+            public string Type()
+            {
+                return TypeId.Replace(LEGACY_TYPE_PREFIX, "");
             }
         }
         public class TallyItemSub : Root
@@ -1106,17 +1179,18 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         }
         public class Production : Root
         {
+            //public MyDefinitionId Definition;
+            public Compare Compare;
+            public MyFixedPoint TargetGoal;
             public MyFixedPoint Current;
-            public MyDefinitionId Def;
-            public string AssemblerType;
-            public Filter Filter;
+            //public MyItemType? Item;
 
             public Production(ProdMeta meta) : base(meta.Root)
             {
+                Compare =  meta.ItemDefinition == null ? new Compare(meta.BluePrintDefintion) : new Compare(meta.ItemDefinition);
+                TargetGoal = meta.TargetGoal;
                 Current = 0;
-                Def = meta.Def;
-                AssemblerType = meta.AssemblerType;
-                Filter = meta.Filter;
+                //try { Item = MyItemType.Parse(meta.ItemDefinition); } catch { Item = null; }
             }
 
             public bool Update()
@@ -1124,7 +1198,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                 // OVERHAUL PRODUCTION! REMOVE FOREACH LOOPS! //
 
-                if (!Filter.Target.HasValue || Current >= Filter.Target)
+                if (Current >= TargetGoal)
                 {
                     // Add excess que removal logic here later
                     return true;
@@ -1149,7 +1223,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                             nextList.RemoveAt(i);
                         }
 
-                    existingQues.AddRange(nextList.FindAll(x => FilterCompare(Filter, x)));
+                    //existingQues.AddRange(nextList.FindAll(x => FilterCompare(Filter, x)));
                 }
 
                 MyFixedPoint existingQueAmount = 0;
@@ -1157,7 +1231,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     existingQueAmount += item.Amount;
 
                 MyFixedPoint projectedTotal = Current + existingQueAmount;
-                MyFixedPoint projectedOverage = Filter.Target.Value - projectedTotal;
+                MyFixedPoint projectedOverage = projectedTotal - TargetGoal;
 
                 if (projectedOverage >= 0)
                 {
@@ -1169,8 +1243,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         producer.ProdBlock.GetQueue(existingQues);
                         for (int i = 0; i < existingQues.Count; i++)
                         {
-                            if (!FilterCompare(Filter, existingQues[i]))
-                                continue;
+                            //if (!FilterCompare(Filter, existingQues[i]))
+                                //continue;
 
                             remove = projectedOverage > existingQues[i].Amount ? existingQues[i].Amount : projectedOverage;
                             producer.ProdBlock.RemoveQueueItem(i, remove);
@@ -1183,8 +1257,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     qeueIndividual = (qeueIndividual < 1) ? 1 : qeueIndividual;                 // Always make atleast 1
                     qeueIndividual = (int)qeueIndividual;                                       // Removal decimal place
 
-                    foreach (Assembler producer in candidates)                                  // Distribute
-                        producer.ProdBlock.AddQueueItem(Def, qeueIndividual);
+                    //foreach (Assembler producer in candidates)                                  // Distribute
+                        //producer.ProdBlock.AddQueueItem(Def, qeueIndividual);
                 }
                 return true;
             }
@@ -1221,7 +1295,6 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             {
                 return false;
             }
-            public virtual bool Match() { return false; }
             public virtual bool DoWork()
             {
                 return false; // Task/Search Proced
@@ -1233,91 +1306,94 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
             WorkResult IterateScope(bool forward = true)
             {
-                WorkResult result = WorkResult.NONE_CONTINUE;
+                WorkResult myResult = WorkResult.NONE_CONTINUE;
                 for (int i = SIx; i < Job.SearchCount; i++)
                 {
                     SIx = i;
-                    result = forward ? Peek(i) : Peek(Job.SearchCount - (i + 1));
+                    myResult = forward ? IterateProc(i) : IterateProc(Job.SearchCount - (i + 1));
 
-                    if (result == WorkResult.OVERHEAT)
+                    if (myResult == WorkResult.OVERHEAT)
                     {
                         Dlog("OverHeat!");
-                        break;
+                        return myResult;
                     }
 
-                    if ((Job.JobType == JobType.FIND || Job.JobType == JobType.MATCH) && result > 0)
+                    if (Job.JobType == JobType.FIND && myResult > 0)
                     {
-                        Dlog("Search Break!");
-                        break;
+                        Dlog("Found Something!");
+                        if (Chain != null)
+                        {
+                            WorkResult chainResult = ChainCall();
+                            if (chainResult > 0)
+                                return chainResult;
+                        }
+                        return myResult;
                     }
 
-                    if (Job.JobType == JobType.WORK && result == WorkResult.COMPLETE)
+                    if (Job.JobType == JobType.EXISTS && myResult > 0)
                     {
-                        Dlog("Work Complete!");
-                        break;
+                        SIx = 0; // May fall back into search
+                        Dlog("Found Existing!");
+                        return myResult;
+                    }
+
+                    if (Job.JobType == JobType.WORK)
+                    {
+                        if (Chain != null)
+                            myResult = ChainCall();
+
+                        if (myResult > 0)
+                            return myResult;
                     }
                 }
 
-                if (Job.JobType == JobType.MATCH && Chain != null)
+                if (Job.JobType == JobType.EXISTS && Chain != null)
                 {
-                    //SIx = 0; // Special Condition?
-
-                    //if (result == WorkResult.NONE_CONTINUE && Chain != null)
-
-                    //if (result > 0)
-                    //{
-                        return ChainCall();
-                    //}
+                    SIx = 0; // May fall back into search
+                    return ChainCall();
                 }
 
-                Dlog($"Peek Result: {result}");
-                return result;
+                Dlog($"{MyOp.Name} Result: {myResult}");
+                return myResult;
             }
-            WorkResult Peek(int i)
+            WorkResult IterateProc(int i)
             {
-                Dlog("Peeking...");
+                Dlog("Iteration...");
 
                 if (CheckOp())
                     return WorkResult.OVERHEAT;
-
-                if (DeadSlot())
-                    return WorkResult.DEAD_SLOT;
 
                 switch (Job.JobType)
                 {
                     case JobType.FIND:
                         Dlog("Finding...");
-                        if (Compare())
+                        return Compare() ? Job.Success : Job.Fail;
+                    /*if (Compare())
+                    {
+                        Dlog("Found!");
+
+                        if (Chain != null)
                         {
-                            Dlog("Found!");
-                            if (Chain != null)
+                            Dlog("Chain Find!");
+                            WorkResult chainResult = ChainCall();
+
+                            if (Chain.Job.JobType == JobType.EXISTS && chainResult == WorkResult.EXISTS)
                             {
-                                Dlog("ChainCall!");
-                                WorkResult chainResult = ChainCall();
-
-                                if (Chain.Job.JobType == JobType.MATCH && chainResult != WorkResult.MATCH_SLOT)
-                                {
-
-                                    Dlog($"Chain Match! Keep searching...");
-                                    return Job.Fail; // Special condition?
-                                }
-
-                                if (chainResult != WorkResult.NONE_CONTINUE)
-                                {
-                                    
-
-                                    Dlog($"ChainResult: {chainResult}");
-                                    return chainResult;
-                                }
+                                Dlog($"Chain Match! Keep searching...");
+                                return Job.Fail; // Special condition?
                             }
 
-                            return Job.Success;
+                            Dlog($"ChainResult: {chainResult}");
+                            return chainResult;
                         }
-                        return Job.Fail;
 
-                    case JobType.MATCH:
-                        Dlog("Matching...");
-                        return Match() ? Job.Success : Job.Fail;
+                        return Job.Success;
+                    }
+                    return Job.Fail;*/
+
+                    case JobType.EXISTS:
+                        Dlog("Looking for existing...");
+                        return Compare() ? Job.Success : Job.Fail;
 
                     case JobType.WORK:
                         Dlog("Doing work...");
@@ -1327,10 +1403,6 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         return WorkResult.ERROR;
                 }
             }
-            bool DeadSlot()
-            {
-                return Job.Requester is Slot && ((Slot)Job.Requester).Inventory == null;
-            }
             bool CheckOp()
             {
                 bool maxed = Program.CallCounter();
@@ -1338,10 +1410,10 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 return maxed;
             }
         }
-        public class InvWork : Work
+        public class InventoryWork : Work
         {
             List<Inventory> InventoryList;
-            public InvWork(RootMeta meta, Op op) : base(meta, op)
+            public InventoryWork(RootMeta meta, Op op) : base(meta, op)
             {
                 Name = "INVENTORY";
             }
@@ -1372,23 +1444,40 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                 return Job.Requester is Slot && ProfileCompare(InventoryList[SIx], (Slot)Job.Requester, out DestinationTarget);
             }
-            /*public override bool DoWork()
-            {
-                return base.DoWork();
-            }*/
-            /*public override WorkResult ChainCall()
-            {
-                return base.ChainCall();
-            }*/
 
             public Inventory Current()
             {
                 return InventoryList == null ? null : InventoryList[SIx];
             }
         }
-        public class ProdWork : Work
+        public class ContainerWork : Work
         {
-            public ProdWork(RootMeta meta, Op op) : base(meta, op)
+            public ContainerWork(RootMeta meta, Op op) : base(meta, op)
+            {
+                Name = "CONTAINER";
+            }
+
+            public override void SetSearchCount()
+            {
+                Job.SearchCount = ((Inventory)Job.Requester).Owner.InventoryCount;
+            }
+            public override WorkResult ChainCall()
+            {
+                Chain.Job.CopyJobMeta(Job);
+                Chain.Job.WIxA = SIx;
+                Chain.SetSearchCount();
+
+                return Chain.WorkLoad();
+            }
+
+            public IMyInventory Current()
+            {
+                return ((Inventory)Job.Requester).Owner.GetInventory(SIx);
+            }
+        }
+        public class ProductionWork : Work
+        {
+            public ProductionWork(RootMeta meta, Op op) : base(meta, op)
             {
                 Name = "PRODUCTION";
             }
@@ -1407,10 +1496,11 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public override bool Compare()
             {
                 TallyItemType type = Program.AllItemTypes[SIx];
-                Dlog($"Comparing type: {Job.TypeCompare} || {type.TypeId}");
+                Dlog($"Comparing type: {Job.Compare.Type()} || {type.TypeId}");
 
-                return (Job.TypeCompare != null && (Job.TypeCompare == "any" || type.TypeId == Job.TypeCompare)) ||
-                    (Job.Requester is Inventory && ProfileCompare(((Inventory)Job.Requester).Profile, type.TypeId, out DestinationTarget, true));
+                return (Job.Requester is Inventory && ProfileCompare(((Inventory)Job.Requester).Profile, type.TypeId, out DestinationTarget, true))
+                    || (Job.Compare.type == "any" || type.TypeId == Job.Compare.type);
+                    //(Job.Compare != null && (Job.TypeCompare == "any" || type.TypeId == Job.TypeCompare)) ||
             }
             /*public override bool DoWork()
             {
@@ -1448,27 +1538,26 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public override bool Compare()
             {
                 TallyItemSub sub = Program.AllItemTypes[Job.WIxA].SubTypes[SIx];
-                Dlog($"Comparing sub: {Job.SubCompare} || {sub.Type.SubtypeId}");
+                Dlog($"Comparing sub: {Job.Compare.sub} || {sub.Type.SubtypeId}");
 
-                return (Job.SubCompare != null && (Job.SubCompare == "any" || sub.Type.SubtypeId == Job.SubCompare)) ||
-                    (Job.Requester is Inventory && ProfileCompare(((Inventory)Job.Requester).Profile, out DestinationTarget, sub.Type.SubtypeId, true));
+                return (Job.Requester is Inventory && ProfileCompare(((Inventory)Job.Requester).Profile, out DestinationTarget, sub.Type.SubtypeId, true))
+                    || (Job.Compare.sub == "any" || sub.Type.SubtypeId == Job.Compare.sub);
+                    //(Job.SubCompare != null && (Job.SubCompare == "any" || sub.Type.SubtypeId == Job.SubCompare)) ||
+                    //;
             }
-            /*public override bool DoWork()
-            {
-                return true; // ?
-            }*/
+
             public override WorkResult ChainCall()
             {
                 Chain.Job.CopyJobMeta(Job);
 
-                if (Chain.Job.JobType == JobType.MATCH)
-                    Chain.Job.TypeMatch = Current().Type;
+                if (Chain.Job.JobType == JobType.EXISTS)
+                    Chain.Job.ItemTypeCompare = Current().Type;
 
                 Chain.Job.WIxA = Job.WIxA;
                 Chain.Job.WIxB = SIx;
                 Chain.SetSearchCount();
 
-                Dlog($"raw compares: {Chain.Job.TypeCompare != null}/{Chain.Job.SubCompare != null}");
+                Dlog($"raw compares: {Chain.Job.Compare.Type() != null}/{Chain.Job.Compare.sub != null}");
 
                 return Chain.WorkLoad();
             }
@@ -1484,28 +1573,29 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public override void SetSearchCount()
             {
                 SlotList = null;
-                Inventory inv = null;
+                IMyInventory inv = null;
 
                 switch (Job.WorkType)
                 {
-                    case WorkType.CHECK:
                     case WorkType.SCAN:
-                        if (Job.Requester is Inventory)
-                        {
-                            inv = (Inventory)Job.Requester;
-                            SlotList = inv.Slots;
-                        }
+                        Inventory scan = ((Inventory)Job.Requester);
+                        inv = scan.PullInventory(Job.WIxA);
+                        SlotList = scan.ContainedSlots[Job.WIxA];
                         break;
 
-                    case WorkType.LINK:
+                    case WorkType.EXISTS:
+                        SlotList = ((Inventory)Job.Requester).AllSlots;
+                        break;
+
+                    case WorkType.MATCH:
                         if (Job.Requester is Slot && !((Slot)Job.Requester).CheckBroken())
                         {
                             SlotList = ((Slot)Job.Requester).Profile.Tallies[(int)Job.TargetGroup];
                         }
                         break;
 
-                    case WorkType.MOVE:
-                        SlotList = Program.MoveRequests;
+                    case WorkType.PUMP:
+                        SlotList = Program.PumpRequests;
                         break;
 
                     case WorkType.BROWSE:
@@ -1521,7 +1611,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 }
 
                 if (inv != null)
-                    Job.SearchCount = inv.Slots.Count > inv.ItemCount() ? inv.Slots.Count : inv.ItemCount();
+                    Job.SearchCount = SlotList.Count > inv.ItemCount ? SlotList.Count : inv.ItemCount;
 
                 else
                     Job.SearchCount = SlotList.Count;
@@ -1530,28 +1620,26 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             }
             public override bool Compare()
             {
-                Dlog($"Checking slot: {SlotList[SIx].SnapShot.Type.SubtypeId}");
+                Slot current = Current();
+                if (current == null)
+                    return false;
 
-                return (
+                Dlog($"Checking slot: [{current.InventoryName()}:{current.SnapShot.Type.SubtypeId}]");
 
-                    /*(Job.SlotMatch != null && SlotCompare((Job.SlotMatch
+                return
+                    (
 
-                    ||*/
-
-                    (Job.Requester is Inventory && ProfileCompare((Inventory)Job.Requester, SlotList[SIx], out DestinationTarget))
+                    ( TypeCompare(current, Job.ItemTypeCompare) )
 
                     ||
 
-                    (Job.Requester is Slot && SlotCompare((Slot)Job.Requester, SlotList[SIx], out DestinationTarget))
+                    ( Job.Requester is Inventory && ProfileCompare((Inventory)Job.Requester, current, out DestinationTarget) )
+
+                    ||
+
+                    ( Job.Requester is Slot && SlotCompare((Slot)Job.Requester, current, out DestinationTarget) )
 
                     );
-            }
-            public override bool Match()
-            {
-                Dlog($"Matching slot: {SlotList[SIx].SnapShot.Type.SubtypeId}");
-
-                Job.SlotMatch = Job.TypeMatch == SlotList[SIx].SnapShot.Type ? SlotList[SIx] : null;
-                return Job.SlotMatch != null;
             }
 
             public override bool DoWork()
@@ -1564,11 +1652,11 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     case WorkType.SCAN:
                         return SlotScan();
 
-                    case WorkType.MOVE:
-                        return SlotMove();
+                    case WorkType.PUMP:
+                        return SlotPump();
 
-                    case WorkType.LINK:
-                        return SlotLink();
+                    case WorkType.MATCH:
+                        return SlotMatch();
 
                     case WorkType.BROWSE:
                         return SlotBrowse();
@@ -1594,50 +1682,84 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             {
                 return SlotList == null ? null : SlotList[SIx];
             }
-            bool SlotLink()
+
+            bool SlotScan()
             {
+                Inventory inv = (Inventory)Job.Requester;
+                IMyInventory container = inv.PullInventory(Job.WIxA);
+
+                if (SIx >= SlotList.Count) // Not enough slots
+                {
+                    Dlog("Adding slot");
+                    Slot newSlot = new Slot(Program.ROOT, inv, Job.WIxA, SIx);
+                    SlotList.Add(newSlot);
+                    inv.AllSlots.Add(newSlot);
+                }
+
+                if (SIx >= container.ItemCount) // Too many slots
+                {
+                    Dlog("Killing slot");
+                    int last = SlotList.Count - 1;
+                    SlotList[last].Kill();
+                }
+
+                else
+                {
+                    Dlog("Updating slot");
+                    SlotList[SIx].Update();
+                }
+
+                Dlog("Slot Scanned!");
+                return false; // Keep Working!
+            }
+            bool SlotMatch()
+            {
+                Slot requester = (Slot)Job.Requester;
+                Slot candidate = Current();
+
+                if (!requester.Refresh())
+                {
+                    Dlog("Broken slot, skipping...");
+                    return true;
+                }
+                if (requester.CheckLinkable()) // Moving handled by pumper, only search for links
+                {
+                    Dlog("Link-able!");
+                    if (requester.CheckLinked())
+                    {
+                        Dlog("Already linked!");
+                        return true;
+                    }
+                    SlotLink();
+                }
+                else
+                {
+                    Dlog("Move-able!");
+
+                    // Can move logic? Maybe too full/empty?
+
+                    SlotMove();
+                }
+                return false; // Keep Working!
+            }
+            void SlotLink()
+            {
+                if (!Compare())
+                {
+                    Dlog("Bad compare!");
+                    return;
+                }
+
                 Slot queued = (Slot)Job.Requester;
-                Slot match = SlotList[SIx];
+                Slot match = Current();
 
-                if (queued == null)
-                {
-                    Dlog("null Queued!");
-                    return true;
-                }
-
-                if (queued.Profile == null)
-                {
-                    Dlog("null Queued Profile!");
-                    return true;
-                }
-
-                if (!queued.CheckUnLinked())
-                    return true;
-
-                if (match == null)
-                {
-                    Dlog("null Match!");
-                    return false;
-                }
-
-                if (queued == match)
-                {
-                    Dlog("Looking at self!");
-                    return false;
-                }
-
-                //if ()
-
-                Dlog($"Queued Tally for linking: {queued.InventoryName()}");
-
-                Dlog($"Filter queued|match IN/OUT: {queued.Filter.IN}/{queued.Filter.OUT}|{match.Filter.IN}/{match.Filter.OUT}\n" +
+                Dlog($"Filter queued|match IN/OUT: {queued.Flow.IN}/{queued.Flow.OUT}|{match.Flow.IN}/{match.Flow.OUT}\n" +
                     $"Links IN/OUT: {(queued.InLink == null ? "None" : $"{queued.InLink.InventoryName()}")}/{(queued.OutLink == null ? "None" : $"{queued.OutLink.InventoryName()}")}");
 
-                if (queued.Filter.IN == 1 &&
+                if (queued.Flow.IN == 1 &&
                     queued.InLink == null &&
-                    match.Filter.OUT > -1) //&&
-                    //(match.Inventory.Profile.RESIDE ||
-                        //!match.Inventory.IsEmpty()))
+                    (queued.CheckOverride() ||
+                    match.Flow.OUT > -1))
                 {
                     Dlog($"In Link Made!");
 
@@ -1645,104 +1767,62 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     match.OutLink = queued;
                 }
 
-                if (queued.Filter.OUT == 1 &&
+                if (queued.Flow.OUT == 1 &&
                     queued.OutLink == null &&
-                    match.Filter.IN > -1) //&&
-                    //(match.Inventory.Profile.RESIDE ||
-                        //!match.Inventory.IsFull()))
+                    match.Flow.IN > -1)
                 {
                     Dlog($"Out Link Made!");
 
                     queued.OutLink = match;
                     match.InLink = queued;
                 }
-
-                return false; // Keep Working!
             }
-            bool SlotScan()
+            void SlotMove()
             {
-                Inventory inv = (Inventory)Job.Requester;
-
-                if (SIx >= inv.Slots.Count) // Not enough slots
+                if (!Compare())
                 {
-                    MyInventoryItem? check = inv.PullItem(SIx);
-                    if (!check.HasValue)
-                    {
-                        Dlog("Bad item lookup!");
-                        return true;
-                    }
-
-                    Dlog("Adding slot");
-                    Slot sloot = new Slot(Program.ROOT, inv, (MyInventoryItem)check, SIx);
-
-                    //if (sloot.Filter.IN == 1 || sloot.Filter.OUT == 1)
-                    //    Program.PumpRequests.Add(sloot);
-
-                    inv.Slots.Add(sloot);
+                    Dlog("Bad compare!");
+                    return;
                 }
 
-                if (SIx >= inv.ItemCount()) // Too many slots
+                Slot requester = (Slot)Job.Requester;
+                Slot candidate = Current();
+
+                if (requester.Flow.IN == 1 && MoveCompare(candidate, requester))
                 {
-                    Dlog("Killing slot");
-                    inv.Slots[inv.Slots.Count - 1].Kill();
+                    bool pullSuccess = TallyTransfer(candidate, requester);
+                    Dlog($"Pull success: {pullSuccess}");
+                    //if (requester.CheckFull())
+                        //return true;
                 }
 
-                else
+                if (requester.Flow.OUT == 1 && MoveCompare(requester, candidate))
                 {
-                    Dlog("Updating slot");
-                    inv.Slots[SIx].Update();
+                    bool pushSuccess = TallyTransfer(requester, candidate);
+                    Dlog($"Push success: {pushSuccess}");
+                    //if (requester.CheckEmpty())
+                        //return true;
                 }
-
-                Dlog("Slot Scanned!");
-                return false; // Keep Working!
             }
-            bool SlotMove()
+            bool SlotPump()
             {
-                if (SlotList[SIx].CheckDead())
-                {
-                    Dlog("Dead Slot, removing from move requests...");
-                    SlotList.RemoveAt(SIx);
-                    Job.SearchCount = SlotList.Count;
-                    SIx--;
-                    return false;
-                }
-
-                if (SlotList[SIx].CheckBroken())
-                {
-                    Dlog("Unsorted Slot, skipping...");
-                    return false;
-                }
-
-                Dlog("Moving...");
-
-                if (SlotList[SIx].CheckLinkable())
-                {
-                    Dlog("Link-able!");
-                    if (!SlotList[SIx].Pump() && !SlotList[SIx].LinkQueued)
-                    {
-                        Dlog("Requesting Links!");
-                        SlotList[SIx].LinkQueued = true;
-                        Program.Linker.Queue.Add(SlotList[SIx]);
-                    }
-                    else
-                        Dlog("Push Complete!");
-
-                    return false; // Keep Working!
-                }
-                if (SlotList[SIx].Filter.OUT == 1 && !SlotList[SIx].DumpQueued) // Only handle out-bound, let browser find items to pull
-                {
-                    Dlog("Dumping Slot!");
-                    SlotList[SIx].DumpQueued = true;
-                    Program.Dumper.Queue.Add(SlotList[SIx]);
-                }
-                return false; // Keep Working!
+                Current().Pump();
+                return false; // Keep working!
             }
             bool SlotBrowse()
             {
-                if (!Compare())
-                    return false; // Keep browsing!
+                Inventory requester = (Inventory)Job.Requester;
 
-                return true;
+                if (!Compare())
+                {
+                    Dlog("Bad Compare!");
+                    return false; // Keep browsing!
+                }
+
+                return ForceTransfer(requester, DestinationTarget, Current()); // Pull one unique item per cycle?
+
+
+                //return true;
             }
         }
 
@@ -1795,12 +1875,12 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public QueueOp(Program prog, bool active) : base(prog, active)
             {
             }
-
             public override bool HasWork()
             {
                 WorkCount = Queue.Count;
                 return WorkCount > 0 ;
             }
+
         }
         public class TallySorter : QueueOp
         {
@@ -1811,10 +1891,10 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 Name = "SORT";
 
                 TypeMatch = new TypeWork(prog.ROOT, this);
-                TypeMatch.Job = new JobMeta(JobType.FIND, WorkType.SORT, WorkResult.FIND_TYPE, WorkResult.NONE_CONTINUE);
+                TypeMatch.Job = new JobMeta(JobType.FIND, WorkType.SORT, WorkResult.TYPE_FOUND);
 
                 SubMatch = new SubWork(prog.ROOT, this);
-                SubMatch.Job = new JobMeta(JobType.FIND, WorkType.SORT, WorkResult.FIND_SUB, WorkResult.NONE_CONTINUE);
+                SubMatch.Job = new JobMeta(JobType.FIND, WorkType.SORT, WorkResult.SUB_FOUND);
                 TypeMatch.Chain = SubMatch;
             }
 
@@ -1826,7 +1906,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 TypeMatch.Job.SlotCompare(Queue[0]);
                 TypeMatch.SetSearchCount();
 
-                if (Sort())
+                if (!Queue[0].Refresh() || Sort())
                 {
                     TypeMatch.SIx = 0;
                     SubMatch.SIx = 0;
@@ -1842,10 +1922,6 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                 switch (TypeMatch.WorkLoad())
                 {
-                    case WorkResult.DEAD_SLOT:
-                        Dlog("DEAD!");
-                        return true;
-
                     case WorkResult.OVERHEAT:
                         Dlog("OVER-HEAT!");
                         return false;
@@ -1857,13 +1933,13 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         Program.AllItemTypes.Add(newType);
                         return true;
 
-                    case WorkResult.FIND_TYPE:
+                    case WorkResult.TYPE_FOUND:
                         Dlog("Type Found!\nNew Sub/Slot");
                         newProf = new TallyItemSub(Program.ROOT, Queue[0]);
                         Program.AllItemTypes[TypeMatch.SIx].SubTypes.Add(newProf);
                         return true;
 
-                    case WorkResult.FIND_SUB:
+                    case WorkResult.SUB_FOUND:
                         Dlog("Sub Type Found!\nNew Slot");
                         Program.AllItemTypes[TypeMatch.SIx].SubTypes[SubMatch.SIx].Append(Queue[0]);
                         return true;
@@ -1873,110 +1949,13 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 }
             }
         }
-        public class TallyLinker : QueueOp
-        {
-            public SlotWork SlotLink;
-
-            public TallyLinker(Program prog, bool active = true) : base(prog, active)
-            {
-                Name = "LINK";
-
-                SlotLink = new SlotWork(prog.ROOT, this);
-                SlotLink.Job = new JobMeta(JobType.WORK, WorkType.LINK, WorkResult.COMPLETE, WorkResult.NONE_CONTINUE, TallyGroup.AVAILABLE);
-            }
-            public override void Run()
-            {
-                base.Run();
-
-                SlotLink.Job.Requester = Queue[0];
-                SlotLink.SetSearchCount();
-
-                if (Link())
-                {
-                    SlotLink.SIx = 0;
-                    Queue[0].LinkQueued = false;
-                    Queue.RemoveAt(0);
-                }
-            }
-            bool Link()
-            {
-                Dlog($"Linking TallySlot: {Queue[0].SnapShot.Type}");
-
-                switch (SlotLink.WorkLoad())
-                {
-                    case WorkResult.DEAD_SLOT:
-                        Dlog("DEAD!");
-                        return true;
-
-                    case WorkResult.OVERHEAT:
-                        Dlog("OVER-HEAT!");
-                        return false;
-
-                    case WorkResult.NONE_CONTINUE: // Link(s) missing, send to dumper if needed
-                        Dlog("Links missing!");
-
-                        if (Queue[0].OutLink == null && Queue[0].Filter.OUT == 1 && !Queue[0].DumpQueued)
-                        {
-                            Dlog("Adding to dump queue...");
-                            Program.Dumper.Queue.Add(Queue[0]);
-                            Queue[0].DumpQueued = true;
-                        }
-
-                        return true;
-
-                    case WorkResult.COMPLETE:
-                        Dlog("Links fullfilled!");
-                        return true;
-
-                    default: // Clear bad event
-                        return true;
-                }
-            }
-
-            /*
-            bool DumpUnwanted()
-            {
-                Dlog("Dumping...");
-
-                Slot queued = Queue[0];
-                SearchCount[1] = Program.Inventories.Count;
-                SearchIndex[1] = SearchIndex[1] < SearchCount[1] ? SearchIndex[1] : SearchCount[1] - 1;
-
-                for (int i = SearchIndex[1]; i > SearchIndex[1] - SR[1] && i > -1; i--)
-                {
-                    Dlog($"Checking Inventory: {Program.Inventories[i].CustomName}");
-
-                    if (queued.Inventory == Program.Inventories[i]) // Skip own inventory
-                        continue;
-
-                    Inventory inventory = Program.Inventories[i];
-                    MyFixedPoint target = 0;
-
-                    if (queued.OUT == 1 &&
-                        queued.Inventory.EmptyCheck() &&
-                        ProfileCompare(inventory.Profile, queued.NEW.Type, out target) &&
-                        ForceTransfer(inventory, queued.Inventory, queued.NEW,
-                        AllowableReturn(target, queued.MyTarget, queued)))
-                    {
-                        SearchIndex[1] = SearchCount[1] - 1;
-                        return true;
-                    }
-                }
-
-                if (Reverse(1))
-                    return true; // found nothing
-
-                return false;
-            }*/
-
-        }
         public class ItemDumper : QueueOp
         {
-            public InvWork InventorySearch;
+            public InventoryWork InventorySearch;
             public ItemDumper(Program prog, bool active = true) : base(prog, active)
             {
-                InventorySearch = new InvWork(prog.ROOT, this);
-                InventorySearch.Job = new JobMeta(JobType.FIND, WorkType.BROWSE, WorkResult.COMPLETE, WorkResult.NONE_CONTINUE);
+                InventorySearch = new InventoryWork(prog.ROOT, this);
+                InventorySearch.Job = new JobMeta(JobType.FIND, WorkType.BROWSE, WorkResult.INVENTORY_FOUND);
 
                 Name = "DUMP";
             }
@@ -1993,7 +1972,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 InventorySearch.Job.Requester = Queue[0];
                 InventorySearch.SetSearchCount();
 
-                if (Browse())
+                if (!Queue[0].Refresh() || Browse())
                 {
                     InventorySearch.SIx = 0;
                     Queue[0].DumpQueued = false;
@@ -2007,10 +1986,6 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                 switch (InventorySearch.WorkLoad())
                 {
-                    case WorkResult.DEAD_SLOT:
-                        Dlog("DEAD!");
-                        return true;
-
                     case WorkResult.OVERHEAT:
                         Dlog("OVER-HEAT!");
                         return false;
@@ -2051,13 +2026,18 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         }
         public class TallyScanner : Op
         {
+            public ContainerWork ContainerScope;
             public SlotWork TallyScope;
             public TallyScanner(Program prog, bool active = true) : base(prog, active)
             {
                 Name = "SCAN";
 
+                ContainerScope = new ContainerWork(prog.ROOT, this);
+                ContainerScope.Job = new JobMeta(JobType.WORK, WorkType.SCAN);
+
                 TallyScope = new SlotWork(prog.ROOT, this);
-                TallyScope.Job = new JobMeta(JobType.WORK, WorkType.SCAN, WorkResult.COMPLETE, WorkResult.NONE_CONTINUE);
+                TallyScope.Job = new JobMeta(JobType.WORK, WorkType.SCAN);
+                ContainerScope.Chain = TallyScope;
             }
 
             public override bool HasWork()
@@ -2070,12 +2050,15 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 base.Run();
 
                 Inventory working = Program.Inventories[WorkIndex];
-                TallyScope.Job.Requester = working;
-                TallyScope.SetSearchCount();
+                ContainerScope.Job.Requester = working;
+                ContainerScope.SetSearchCount();
+                //TallyScope.Job.Requester = working;
+                //TallyScope.SetSearchCount();
 
                 if (Scan())
                 {
                     working.Pulled = false;
+                    ContainerScope.SIx = 0;
                     TallyScope.SIx = 0;
                     if (Next())
                         Program.SCANNED = true;
@@ -2086,7 +2069,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             {
                 Dlog($"Scanning Inventory: {Program.Inventories[WorkIndex].CustomName}");
 
-                switch (TallyScope.WorkLoad())
+                switch (ContainerScope.WorkLoad())
                 {
                     case WorkResult.OVERHEAT:
                         Dlog("OVER-HEAT!");
@@ -2102,37 +2085,98 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 }
             }
         }
-        public class TallyPusher : Op
+        public class TallyMatcher : Op
         {
-            public SlotWork SlotPush;
+            public SlotWork SlotLink;
 
-            public TallyPusher(Program prog, bool active = true) : base(prog, active)
+            public TallyMatcher(Program prog, bool active = true) : base(prog, active)
             {
-                Name = "PUSH";
+                Name = "MATCH";
 
-                SlotPush = new SlotWork(prog.ROOT, this);
-                SlotPush.Job = new JobMeta(JobType.WORK, WorkType.MOVE, WorkResult.COMPLETE, WorkResult.NONE_CONTINUE);
+                SlotLink = new SlotWork(prog.ROOT, this);
+                SlotLink.Job = new JobMeta(JobType.WORK, WorkType.MATCH, WorkResult.COMPLETE, WorkResult.NONE_CONTINUE, TallyGroup.AVAILABLE);
+            }
+            public override bool HasWork()
+            {
+                WorkCount = Program.MoveRequests.Count;
+                return WorkCount > 0;
+            }
+
+            public override void Run()
+            {
+                base.Run();
+
+                SlotLink.Job.Requester = Program.MoveRequests[WorkIndex];
+                SlotLink.SetSearchCount();
+
+                if (Move())
+                {
+                    SlotLink.SIx = 0;
+                    Next();
+                }
+            }
+            bool Move()
+            {
+                Slot moving = Program.MoveRequests[WorkIndex];
+                Dlog($"Linking TallySlot: {moving.SnapShot.Type}");
+
+                switch (SlotLink.WorkLoad())
+                {
+                    case WorkResult.OVERHEAT:
+                        Dlog("OVER-HEAT!");
+                        return false;
+
+                    case WorkResult.NONE_CONTINUE: // Link(s) missing, or slots need fulfilling
+
+                        if (moving.Flow.OUT == 1 && !moving.DumpQueued)
+                        {
+                            Dlog("Adding to dump queue...");
+                            Program.Dumper.Queue.Add(moving);
+                            moving.DumpQueued = true;
+                        }
+
+                        return true;
+
+                    case WorkResult.COMPLETE:
+                        Dlog("Moving Complete!");
+                        return true;
+
+                    default: // Clear bad event
+                        return true;
+                }
+            }
+        }
+        public class TallyPumper : Op
+        {
+            public SlotWork SlotPump;
+
+            public TallyPumper(Program prog, bool active = true) : base(prog, active)
+            {
+                Name = "PUMP";
+
+                SlotPump = new SlotWork(prog.ROOT, this);
+                SlotPump.Job = new JobMeta(JobType.WORK, WorkType.PUMP);
             }
 
             public override bool HasWork()
             {
-                WorkCount = Program.MoveRequests.Count;
-                return Program.MoveRequests.Count > 0;
+                WorkCount = Program.PumpRequests.Count;
+                return Program.PumpRequests.Count > 0;
             }
             public override void Run()
             {
                 base.Run();
 
-                SlotPush.SetSearchCount();
+                SlotPump.SetSearchCount();
 
-                if (Push())
+                if (Pump())
                 {
-                    SlotPush.SIx = 0;
+                    SlotPump.SIx = 0;
                 }
             }
-            bool Push()
+            bool Pump()
             {
-                switch (SlotPush.WorkLoad())
+                switch (SlotPump.WorkLoad())
                 {
                     case WorkResult.OVERHEAT:
                         Dlog("OVER-HEAT!");
@@ -2157,18 +2201,18 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public ItemBrowser(Program prog, bool active = true) : base(prog, active)
             {
                 TypeFind = new TypeWork(prog.ROOT, this);
-                TypeFind.Job = new JobMeta(JobType.FIND, WorkType.NONE, WorkResult.NONE_CONTINUE, WorkResult.NONE_CONTINUE);
+                TypeFind.Job = new JobMeta(JobType.FIND, WorkType.NONE, WorkResult.NONE_CONTINUE);
 
                 SubFind = new SubWork(prog.ROOT, this);
-                SubFind.Job = new JobMeta(JobType.FIND, WorkType.NONE, WorkResult.NONE_CONTINUE/*FIND_SUB*/, WorkResult.NONE_CONTINUE);
+                SubFind.Job = new JobMeta(JobType.FIND, WorkType.NONE, WorkResult.NONE_CONTINUE);
                 TypeFind.Chain = SubFind;
 
                 SlotMatch = new SlotWork(prog.ROOT, this);
-                SlotMatch.Job = new JobMeta(JobType.MATCH, WorkType.CHECK, WorkResult.NONE_CONTINUE, WorkResult.NONE_CONTINUE);
+                SlotMatch.Job = new JobMeta(JobType.EXISTS, WorkType.EXISTS, WorkResult.EXISTS);
                 SubFind.Chain = SlotMatch;
 
                 SlotBrowse = new SlotWork(prog.ROOT, this);
-                SlotBrowse.Job = new JobMeta(JobType.WORK, WorkType.BROWSE, WorkResult.FIND_SLOT, WorkResult.NONE_CONTINUE, TallyGroup.AVAILABLE);
+                SlotBrowse.Job = new JobMeta(JobType.WORK, WorkType.BROWSE, WorkResult.SLOT_FOUND, WorkResult.NONE_CONTINUE, TallyGroup.AVAILABLE);
                 SlotMatch.Chain = SlotBrowse;
 
                 Name = "BROWSE";
@@ -2217,28 +2261,16 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         Dlog("Nothing Moved!");
                         return true;
 
-                    /*case WorkResult.FIND_TYPE:
-                        Dlog("Type-only Found!");
-                        return true;
-
-                    case WorkResult.FIND_SUB:
-                        Dlog("Sub-only Found!");
-                        return true;
-
-                    case WorkResult.MATCH_SLOT:
-                        Dlog("Slot-match-only present!");
-                        return true;*/
-
-                    case WorkResult.FIND_SLOT:
+                    case WorkResult.SLOT_FOUND:
                         Dlog("Move Success!");
                         return true;
 
-                        Dlog($"Eligable Slot Found! Requester is {((SlotBrowse.Job.Requester is Inventory) ? "Inventory" : (SlotBrowse.Job.Requester is Slot) ? "Slot" : "Unknown")}");
+                        /*Dlog($"Eligable Slot Found! Requester is {((SlotBrowse.Job.Requester is Inventory) ? "Inventory" : (SlotBrowse.Job.Requester is Slot) ? "Slot" : "Unknown")}");
                         browser.Pulled =
                             SlotBrowse.Job.Requester == browser ? ForceTransfer(browser, SlotBrowse.DestinationTarget, SlotBrowse.Current()) :
                             (SlotBrowse.Job.Requester is Slot) ? TallyTransfer((Slot)SlotBrowse.Job.Requester, SlotBrowse.Current()) : false;
                         Dlog($"Transfer success: {browser.Pulled}");
-                        return true;
+                        return true;*/
 
                     default:
                         return true;
@@ -2254,7 +2286,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         }
         public class ProductionManager : Op
         {
-            public ProdWork ProdCheck;
+            public ProductionWork ProdCheck;
             public ProductionManager(Program prog, bool active = true) : base(prog, active)
             {
                 Name = "PRODUCE";
@@ -2822,8 +2854,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                         break;
 
                     case StrForm.PRODUCTION:
-                        if (!Program.ShowProdBuilding)
-                        {
+                        //if (!Program.ShowProdBuilding)
+                        //{
                             if (CharCount < (blocks[0].Length + blocks[2].Length + blocks[3].Length // Can Listing fit on one line?
                                 + 4)) // Additional chars
                             {
@@ -2842,8 +2874,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                                 FAP($"{blocks[2]}/{blocks[3]}");
                             }
-                        }
-                        else
+                        //}
+                        /*else
                         {
                             if (CharCount < (blocks[0].Length + blocks[1].Length + blocks[2].Length + blocks[3].Length // Can Listing fit on one line?
                                 + 4)) // Additional chars
@@ -2869,7 +2901,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                                 FAP($"{blocks[2]}/{blocks[3]}");
                             }
-                        }
+                        }*/
                         break;
 
                     case StrForm.FILTER:
@@ -2988,7 +3020,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 }
 
                 Inventory inventory = (Inventory)target;
-                if (inventory.Slots.Count < 0)
+                if (inventory.AllSlots.Count < 0)
                 {
                     AppendLine(StrForm.WARNING, "No Slots!");
                     return;
@@ -2997,7 +3029,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                 //AppendLine(StrForm.TABLE, $"[ ITEM ]{Split}[ COUNT/TARGET ]");
 
-                foreach (Slot slot in inventory.Slots)
+                foreach (Slot slot in inventory.AllSlots)
                     AppendLine(StrForm.INVENTORY, RawSlotItem(Meta, slot, Program.LIT_DEFS));
             }
 
@@ -3010,7 +3042,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 }
 
                 Inventory inventory = (Inventory)target;
-                if (inventory.Slots.Count < 0)
+                if (inventory.AllSlots.Count < 0)
                 {
                     AppendLine(StrForm.WARNING, "No Linked Tallies!");
                     return;
@@ -3048,15 +3080,14 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                 foreach (Production prod in Program.Productions)
                 {
-                    string nextDef = prod.Filter.ItemID[1];
+                    string nextDef = prod.Compare.sub;
                     ProdCharBuffer = (ProdCharBuffer > nextDef.Length) ? ProdCharBuffer : nextDef.Length;
 
 
                     AppendLine(StrForm.PRODUCTION,
                         nextDef + Seperator +
-                        prod.AssemblerType + Seperator +
                         prod.Current + Seperator +
-                        prod.Filter.Target);
+                        prod.TargetGoal);
                 }
             }
             void TallyBuilder()
@@ -3067,7 +3098,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     if (!ProfileCompare(Profile, type.TypeId, out blah))
                         continue;
 
-                    AppendLine(StrForm.SUB_HEADER, $"[{type.TypeId.Replace("MyObjectBuilder_", "")}]");
+                    AppendLine(StrForm.SUB_HEADER, $"[{type.Type()}]");
                     foreach (TallyItemSub subType in type.SubTypes)
                     {
                         if (!ProfileCompare(Profile, subType.Type, out blah))
@@ -3195,11 +3226,15 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         {
             public bool Pulled = false;
             public IMyInventoryOwner Owner;
-            public List<Slot> Slots = new List<Slot>();
+            public List<Slot> AllSlots = new List<Slot>();
+            public List<Slot>[] ContainedSlots;
 
             public Inventory(BlockMeta meta) : base(meta)
             {
                 Owner = (IMyInventoryOwner)meta.Block;
+                ContainedSlots = new List<Slot>[Owner.InventoryCount];
+                for (int i = 0; i < ContainedSlots.Length; i++)
+                    ContainedSlots[i] = new List<Slot>();
             }
 
             public override void Setup()
@@ -3210,93 +3245,38 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 else
                     Program.PullRequests.Remove(this);
             }
-
-            public bool IsFull(bool input = true)
+            public bool CheckFull(IMyInventory target)
             {
-                IMyInventory target = PullInventory(input);
-                return (float)target.CurrentVolume / (float)target.MaxVolume > FULL_MIN;
+                return target != null && (float)target.CurrentVolume / (float)target.MaxVolume > FULL_MIN;
             }
-            public bool IsClogged()
+            public bool CheckEmpty(IMyInventory target)
             {
-                IMyInventory target = PullInventory();
-                return (float)target.CurrentVolume / (float)target.MaxVolume > CLEAN_MIN;
-            }
-            public bool IsEmpty(bool input = true)
-            {
-                IMyInventory target = PullInventory(input);
                 return (float)target.CurrentVolume / (float)target.MaxVolume < EMPTY_MAX;
             }
+            public bool CheckClogged()
+            {
+                IMyInventory input = PullInventory();
+                return (float)input.CurrentVolume / (float)input.MaxVolume > CLEAN_MIN;
+            }
+            
+
             public bool EmptyCheck()
             {
-                return Profile.CLEAN ? IsClogged() : true;
+                return Profile.CLEAN ? CheckClogged() : true;
             }
-
             public virtual bool FillCheck()
             {
                 return true;
             }
-            public IMyInventory PullInventory(int index)
-            {
-                int blah;
-                return PullInventory(index, out blah);
-            }
-            public IMyInventory PullInventory(int index, out int offset)
-            {
-                IMyInventory target;
-                offset = 0;
 
-                for (int i = 0; i < Owner.InventoryCount; i++)
-                {
-                    target = Owner.GetInventory(i);
-                    if (target.ItemCount <= index - offset)
-                    {
-                        offset += target.ItemCount;
-                        continue;
-                    }
-                    return target;
-                }
-                return null;
-            }
             public IMyInventory PullInventory(bool input = true)
             {
-                return input ? Owner.GetInventory(0) : Owner.InventoryCount > 1 ? Owner.GetInventory(1) : Owner.GetInventory(0);
+                return PullInventory(input ? 0 : 1);
             }
-            public int PullLiteralIndex(int index)
+            public IMyInventory PullInventory(int invIndex)
             {
-                IMyInventory blah;
-                return PullLiteralIndex(index, out blah);
+                return Owner == null ? null : Owner.GetInventory(invIndex);
             }
-            public int PullLiteralIndex(int index, out IMyInventory target)
-            {
-                int offset;
-                target = PullInventory(index, out offset);
-
-                if (target == null)
-                    return -1;
-
-                return index - offset;
-            }
-            public MyInventoryItem? PullItem(int index)
-            {
-                IMyInventory targetInv;
-                int literalIndex = PullLiteralIndex(index, out targetInv);
-
-                if (literalIndex == -1)
-                    return null;
-
-                return targetInv.GetItemAt(literalIndex);
-            }
-            public int ItemCount()
-            {
-                int total = 0;
-
-                for (int i = 0; i < Owner.InventoryCount; i++)
-                    total += Owner.GetInventory(i).ItemCount;
-
-                return total;
-            }
-
-            
         }
         public class Connector : Inventory
         {
@@ -3397,42 +3377,30 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         static bool ForceTransfer(Inventory target, MyFixedPoint? targetAllowed, Slot source)
         {
             target.Dlog("Performing Force Transfer...");
+
             MyFixedPoint? allowed = AllowableReturn(targetAllowed, source);
-            IMyInventory sourceInv;
-            int literalIndex = source.Inventory.PullLiteralIndex(source.Index, out sourceInv);
-            if (literalIndex == -1 || sourceInv == null)
-            {
-                target.Dlog("Invalid Source Index!");
-                return false;
-            }
                 
-            return target.PullInventory().TransferItemFrom(sourceInv, literalIndex, null, null, allowed);
+            return target.PullInventory().TransferItemFrom(source.Container, source.ItemIndex, null, null, allowed);
         }
         static bool TallyTransfer(Slot source, Slot dest)
         {
             try
             {
-                if (source.SnapShot.Type != dest.SnapShot.Type)
+                if (dest.CheckFull())
                 {
-                    dest.Dlog("Type mis-match!");
-                    return false;
-                }
-                    
-                if (dest.Inventory.IsFull())
-                {
-                    dest.Dlog("Too Full!");
+                    dest.Dlog("Destination Too Full!");
                     return false;
                 }
 
-                if (source.Inventory.IsEmpty())
+                if (source.CheckEmpty())
                 {
-                    source.Dlog("Too Empty!");
+                    source.Dlog("Source Too Empty!");
                     return false;
                 }
 
                 MyFixedPoint? amount = AllowableReturn(dest, source);
 
-                return dest.Inventory.PullInventory(dest.Index).TransferItemFrom(source.Inventory.PullInventory(source.Index), source.Index, dest.Index, true, amount);
+                return dest.Container.TransferItemFrom(source.Container, source.ItemIndex, dest.ItemIndex, true, amount);
             }
             catch { return false; }
         }
@@ -3443,24 +3411,25 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         }
         static MyFixedPoint? AllowableReturn(Slot dest, Slot moving)
         {
-            return AllowableReturn(dest.Filter.Target > 0 ? dest.Filter.Target - dest.SnapShot.Amount : 0, moving);
+            return AllowableReturn(dest.Flow.FILL > 0 ? dest.Flow.FILL - dest.SnapShot.Amount : 0, moving);
         }
         static MyFixedPoint? AllowableReturn(MyFixedPoint? destTarget, Slot moving)
         {
-            MyFixedPoint allow = moving.Filter.Target.HasValue ? moving.SnapShot.Amount - moving.Filter.Target.Value : moving.CheckLinkable() /*Inventory.Profile.RESIDE*/ ? moving.SnapShot.Amount - 1 : 0;
+            MyFixedPoint allow = moving.Flow.FILL.HasValue ? moving.SnapShot.Amount - moving.Flow.FILL.Value : moving.CheckLinkable() /*Inventory.Profile.RESIDE*/ ? moving.SnapShot.Amount - 1 : 0;
             MyFixedPoint? output = MaximumReturn(destTarget, allow);
             return output.HasValue ? output.Value < 0 ? 0 : output : null;
         }
 
+        
         static ProdMeta? ReadRecipe(string recipe, RootMeta meta)
         {
             try
             {
-                string[] set = recipe.Split(':');
-                MyDefinitionId nextId = MyDefinitionId.Parse(set[0]);
-                string prodId = set[1];
+                string[] set = recipe.Split(Split);
+                string blueDef = set[0];
+                string itemDef = set[1];
                 int target = Int32.Parse(set[2]);
-                return new ProdMeta(meta, nextId, prodId, target);
+                return new ProdMeta(meta, blueDef, target, itemDef);
             }
             catch { return null; }
         }
@@ -3485,8 +3454,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 return false;
             }
 
-            return dirIn ? source.Filter.OUT > -1 && ProfileCompare(destination.Profile, source.SnapShot.Type, out target) :
-                           source.Filter.IN > -1 && ProfileCompare(destination.Profile, source.SnapShot.Type, out target, false);
+            return dirIn ? source.Flow.OUT > -1 && ProfileCompare(destination.Profile, source.SnapShot.Type, out target) :
+                           source.Flow.IN > -1 && ProfileCompare(destination.Profile, source.SnapShot.Type, out target, false);
         }
         static bool ProfileCompare(FilterProfile profile, MyItemType type, out MyFixedPoint? target, bool dirIn = true)
         {
@@ -3525,15 +3494,20 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 match = true;
                 allow = true; // re-try
 
-                if (filter.IN == -1 &&
+                if (filter.Flow.IN == -1 &&
                     dirIn)
+                {
+                    target = !filter.Flow.FILL.HasValue ? target : filter.Flow.FILL;
                     allow = false;
+                }
+                    
 
-                if (filter.OUT == -1 &&
+                if (filter.Flow.OUT == -1 &&
                     !dirIn)
+                {
+                    target = !filter.Flow.KEEP.HasValue ? target : filter.Flow.KEEP;
                     allow = false;
-
-                target = !filter.Target.HasValue ? target : filter.Target;
+                }
             }
 
             allow = match ? allow : auto;
@@ -3544,14 +3518,14 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         static bool FilterCompare(Filter A, MyProductionItem B)
         {
             return FilterCompare(A,
-                A.ItemID[0], A.ItemID[1],
-                "Component", // >: |
+                A.Compare.type, A.Compare.sub,
+                "any"/*B.BlueprintId.TypeId.ToString()*/, // Needs further development...
                 B.BlueprintId.SubtypeId.ToString());
         }
         static bool FilterCompare(Filter A, string typeB, string subB)
         {
             return FilterCompare(A,
-                A.ItemID[0], A.ItemID[1],
+                A.Compare.type, A.Compare.sub,
                 typeB, subB);
         }
         static bool FilterCompare(Root dbug, string A, string a, string b, string B)
@@ -3577,45 +3551,29 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
             return source.IndexOf(target, StringComparison.OrdinalIgnoreCase) > -1;
         }
+
         static bool SlotCompare(Slot Req, Slot Can, out MyFixedPoint? allowable)
         {
             allowable = AllowableReturn(Req, Can);
 
+            return SlotCompare(Req, Can);
+        }
+        static bool SlotCompare(Slot Req, Slot Can)
+        {
             return
-                Req != Can && Req.SnapShot.Type == Can.SnapShot.Type &&
-                //A.Inventory == B.Inventory || //A.Inventory == null || B.Inventory == null || // Let them amalgamate???
-                ((Req.Filter.IN == 1 && Req.InLink == null && Req.Inventory.PullInventory().IsConnectedTo(Can.Inventory.PullInventory(false))) ||
-                (Req.Filter.OUT == 1 && Req.OutLink == null && Req.Inventory.PullInventory().IsConnectedTo(Can.Inventory.PullInventory(false))));
+                Req != Can && Can.Refresh() && /*Req.Refresh() &&*/ // Requester is expected to have refreshed already
+                Req.SnapShot.Type == Can.SnapShot.Type &&           // Only type match, handle flow externally
+                (Req.Container == Can.Container ||                  // Let them amalgamate???Let them amalgamate???
+                 Req.Container.IsConnectedTo(Can.Container));
         }
-
-        #endregion
-
-        #region Filter builders
-        static void GenerateFilters(string combo, ref string[] id)
+        
+        static bool MoveCompare(Slot output, Slot input)
         {
-            id[0] = "null";
-            id[1] = "null";
-
-            try
-            {
-                string[] strings = combo.Split(':');
-                id[0] = strings[0];
-                id[1] = strings[1];
-
-                id[0] = id[0] == "any" || id[0] == "" ? "any" : id[0];
-                id[1] = id[1] == "any" || id[1] == "" ? "any" : id[1];
-            }
-            catch { }
+            return input.Flow.IN > -1 && output.Flow.OUT > -1;
         }
-        static void GenerateFilters(MyDefinitionId def, ref string[] id) // Production
+        static bool TypeCompare(Slot slot, MyItemType? type)
         {
-            id[0] = "Component";
-            id[1] = def.SubtypeName.ToString().Replace("Component", "");
-        }
-        static void GenerateFilters(MyItemType type, ref string[] id)
-        {
-            id[0] = type.TypeId.Replace("MyObjectBuilder_", "");
-            id[1] = type.SubtypeId.Replace("Component", "");
+            return slot != null && type.HasValue && slot.SnapShot.Type == type.Value;
         }
         #endregion
 
@@ -3688,19 +3646,26 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             string itemName = string.Empty;
             if (lit)
             {
-                itemName = type.ToString().Replace("MyObjectBuilder_", "");
+                itemName = type.ToString();
             }
             else
             {
-                itemName = type.ToString().Split('/')[1];
+                string[] blocks = type.ToString().Split('/');
 
-                if (type.TypeId.Split('_')[1] == "Ore" || type.TypeId.Split('_')[1] == "Ingot")   // Distinguish between Ore and Ingot Types
-                    itemName = type.TypeId.Split('_')[1] + ":" + type.SubtypeId;
+                if (blocks[0].Contains("Ore") || blocks[0].Contains("Ingot"))   // Distinguish between Ore and Ingot Types
+                    itemName = blocks[0].Split('_')[1] + ":" + type.SubtypeId;
 
-                if (type.TypeId.Split('_')[1] == "Ingot" && type.SubtypeId == "Stone")
+                else if (blocks[0].Contains("Ingot") && type.SubtypeId == "Stone") // Gravel special case
                     itemName = "Gravel";
+
+                else
+                    itemName = type.SubtypeId;
             }
             return itemName;
+        }
+        static string Type(MyItemType type)
+        {
+            return type.TypeId.Replace(LEGACY_TYPE_PREFIX, "");
         }
         static string RawTallyItem(DisplayMeta mod, TallyItemSub sub, bool lit)
         {
@@ -3708,17 +3673,18 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         }
         static string RawSlotItem(DisplayMeta mod, Slot slot, bool lit)
         {
-            return $"{ItemNameCrop(slot.SnapShot.Type, lit)}{Split}{ParseItemTotal(slot.SnapShot.Amount, slot.Filter.Target, mod)}";
+            return $"{ItemNameCrop(slot.SnapShot.Type, lit)}{Split}{ParseItemTotal(slot.SnapShot.Amount, slot.Flow.FILL, mod)}";
         }
         static string RawFilter(Filter filter)
         {
             if (filter == null)
                 return "null filter!";
 
-            string output = $"{filter.ItemID[0]}{Split}{filter.ItemID[1]}{Split}";
-            output += filter.Target == 0 ? $"No Target{Split}" : $"{filter.Target}{Split}";
-            output += filter.IN == 1 ? ":+ IN:" : filter.IN == 0 ? ":= IN:" : ":- IN:";
-            output += filter.OUT == 1 ? ":+OUT:" : filter.OUT == 0 ? ":=OUT:" : ":-OUT:";
+            string output = $"{filter.Compare.Type()}{Split}{filter.Compare.sub}{Split}";
+            output += !filter.Flow.FILL.HasValue ? $"No Fill Target{Split}" : $"{filter.Flow.FILL}{Split}";
+            output += !filter.Flow.KEEP.HasValue ? $"No Keep Target{Split}" : $"{filter.Flow.KEEP}{Split}";
+            output += filter.Flow.IN == 1 ? ":+ IN:" : filter.Flow.IN == 0 ? ":= IN:" : ":- IN:";
+            output += filter.Flow.OUT == 1 ? ":+OUT:" : filter.Flow.OUT == 0 ? ":=OUT:" : ":-OUT:";
             return output;
         }
         static string RawPush(Slot link, int length)
@@ -3767,7 +3733,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             BUILT = false;
             block newBlock = null;
 
-            for (int i = AuxIndex; i < AuxIndex + BUILD_CAP; i++)
+            for (int i = AuxIndex; i < AuxIndex + OP_CAP; i++)
             {
                 if (i >= DetectedBlocks.Count)
                 {
@@ -3845,7 +3811,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             }
 
             SETUP = BUILT;
-            AuxIndex = BUILT ? 0 : AuxIndex + BUILD_CAP;
+            AuxIndex = BUILT ? 0 : AuxIndex + OP_CAP;
         }
         #endregion
 
@@ -3868,6 +3834,11 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 RUN_FREQ = UpdateFrequency.Update100;
 
             Runtime.UpdateFrequency = RUN_FREQ;
+        }
+        void AdjustVolume(bool up = true)
+        {
+            OP_CAP += up ? 1 : -1;
+            OP_CAP = OP_CAP < OP_CAP_MIN ? OP_CAP_MIN : OP_CAP > OP_CAP_MAX ? OP_CAP_MAX : OP_CAP;
         }
         string GenerateRecipes()
         {
@@ -3941,8 +3912,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     break;
 
                 case "MOVE":
-                    Pusher.Toggle();
-                    Linker.Toggle();
+                    //Mover.Toggle();
+                    Mover.Toggle();
                     Browser.Toggle();
                     Dumper.Toggle();
                     break;
@@ -4008,7 +3979,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         #region RUNTIME
         void Debugging()
         {
-            Debug.Append($"CallCount: {SEARCH_COUNT}");
+            Debug.Append($"CallCount: {OP_COUNT}");
             mySurface.WriteText(Debug);
             Debug.Clear();
         }
@@ -4020,12 +3991,20 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
             switch (argument)
             {
-                case "FASTER":
+                case "FAST":
                     AdjustSpeed();
                     break;
 
-                case "SLOWER":
+                case "SLOW":
                     AdjustSpeed(false);
+                    break;
+
+                case "BIG":
+                    AdjustVolume();
+                    break;
+
+                case "SMALL":
+                    AdjustVolume(false);
                     break;
 
                 case "BUILD":
@@ -4161,7 +4140,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         }
         public void Main(string argument, UpdateType updateSource)
         {
-            SEARCH_COUNT = 0;
+            OP_COUNT = 0;
             RunArguments(argument);
             ProgEcho();
 
