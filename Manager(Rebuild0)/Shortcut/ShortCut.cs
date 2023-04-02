@@ -244,7 +244,6 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         UpdateFrequency RUN_FREQ;
 
         bool LIT_DEFS = false;
-        //bool ShowProdBuilding = false;
 
         bool DETECTED;
         bool BUILT;
@@ -1000,7 +999,6 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public bool DEFAULT_IN;
             public bool FILL;
             public bool EMPTY;
-            //public bool RESIDE;
             public bool CLEAN;
             public bool ACTIVE_CONVEYOR;
 
@@ -1487,7 +1485,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 Chain.Job.WIxA = SIx;
                 Chain.SetSearchCount();
 
-                return Chain.WorkLoad();// WorkLoad(ChainJob);
+                return Chain.WorkLoad();
             }
         }
         public class SubWork : Work
@@ -3391,7 +3389,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         }
         static MyFixedPoint? AllowableReturn(MyFixedPoint? destTarget, Slot moving)
         {
-            MyFixedPoint allow = moving.Flow.FILL.HasValue ? moving.SnapShot.Amount - moving.Flow.FILL.Value : moving.CheckLinkable() /*Inventory.Profile.RESIDE*/ ? moving.SnapShot.Amount - 1 : 0;
+            MyFixedPoint allow = moving.Flow.FILL.HasValue ? moving.SnapShot.Amount - moving.Flow.FILL.Value : moving.CheckLinkable() ? moving.SnapShot.Amount - 1 : 0;
             MyFixedPoint? output = MaximumReturn(destTarget, allow);
             return output.HasValue ? output.Value < 0 ? 0 : output : null;
         }
