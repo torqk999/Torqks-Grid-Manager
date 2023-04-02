@@ -226,14 +226,14 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         const int OP_CAP_DEF = 30;
         const int OP_CAP_MIN = 10;
 
-        static UpdateFrequency INIT_FREQ = UpdateFrequency.None;
+        static UpdateFrequency INIT_FREQ = UpdateFrequency.Update1;
         /// WARNING!! DO NOT GO FURTHER USER!! ///
 
         #region DEFAULTS
 
         const string RefineryDefault =
             "! -in +out\n" +
-            "ore: +in -out\n" +
+            "ore/ +in -out\n" +
             "&convey\n" +
             "&fill\n" +
             "&empty";
@@ -663,7 +663,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
             public string Type()
             {
-                return type.Replace(LEGACY_TYPE_PREFIX, "");
+                return type == null ? null : type.Replace(LEGACY_TYPE_PREFIX, "");
             }
         }
         public struct Flow
@@ -749,7 +749,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
             public string InventoryName()
             {
-                return $"{((Inventory == null) ? "No inventory" : $"{Inventory.CustomName}[{ItemIndex}]")}";
+                return $"{((Inventory == null) ? "No inventory" : $"{Inventory.CustomName}[{(InvIndex == 0 ? "Input" : InvIndex == 1 ? "Output" : InvIndex.ToString())} | {ItemIndex}]")}";
             }
 
             public void Update()
@@ -853,7 +853,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 MyInventoryItem? check;
                 bool result = CheckSlot(out check);
                 SnapShot = result ? check.Value : SnapShot; // leave old Snapshot if slot broken
-                Dlog($"Slot {(result ? "Refreshed!" : "Broken!")}");
+                Dlog($"Slot {InventoryName()} is {(result ? "Refreshed!" : "Broken!")}");
                 return result;
             }
             public bool CheckOverride()
@@ -887,7 +887,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             }
             public bool CheckBroken()
             {
-                return Refresh() || !CheckSorted();
+                return !Refresh() || !CheckSorted();
             }
             public bool CheckFull()
             {
@@ -977,7 +977,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
             public bool IsMoving()
             {
-                return Flow.IN == 1 || Flow.OUT == 1;
+                return Flow.IsMoving();
             }
             Filter(RootMeta meta, Flow flow) : base(meta)
             {
@@ -1304,13 +1304,13 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 return WorkResult.NONE_CONTINUE;
             }
 
-            WorkResult IterateScope(bool forward = true)
+            WorkResult IterateScope()
             {
                 WorkResult myResult = WorkResult.NONE_CONTINUE;
                 for (int i = SIx; i < Job.SearchCount; i++)
                 {
                     SIx = i;
-                    myResult = forward ? IterateProc(i) : IterateProc(Job.SearchCount - (i + 1));
+                    myResult = IterateProc();
 
                     if (myResult == WorkResult.OVERHEAT)
                     {
@@ -1356,7 +1356,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 Dlog($"{MyOp.Name} Result: {myResult}");
                 return myResult;
             }
-            WorkResult IterateProc(int i)
+            WorkResult IterateProc()
             {
                 Dlog("Iteration...");
 
@@ -1368,28 +1368,6 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     case JobType.FIND:
                         Dlog("Finding...");
                         return Compare() ? Job.Success : Job.Fail;
-                    /*if (Compare())
-                    {
-                        Dlog("Found!");
-
-                        if (Chain != null)
-                        {
-                            Dlog("Chain Find!");
-                            WorkResult chainResult = ChainCall();
-
-                            if (Chain.Job.JobType == JobType.EXISTS && chainResult == WorkResult.EXISTS)
-                            {
-                                Dlog($"Chain Match! Keep searching...");
-                                return Job.Fail; // Special condition?
-                            }
-
-                            Dlog($"ChainResult: {chainResult}");
-                            return chainResult;
-                        }
-
-                        return Job.Success;
-                    }
-                    return Job.Fail;*/
 
                     case JobType.EXISTS:
                         Dlog("Looking for existing...");
@@ -1495,26 +1473,19 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             }
             public override bool Compare()
             {
-                TallyItemType type = Program.AllItemTypes[SIx];
-                Dlog($"Comparing type: {Job.Compare.Type()} || {type.TypeId}");
+                TallyItemType tallyType = Program.AllItemTypes[SIx];
+                Dlog($"Comparing type: {(Job.Requester is Inventory? ((Inventory)Job.Requester).CustomName : Job.Compare.Type())} || {tallyType.TypeId}");
 
-                return (Job.Requester is Inventory && ProfileCompare(((Inventory)Job.Requester).Profile, type.TypeId, out DestinationTarget, true))
-                    || (Job.Compare.type == "any" || type.TypeId == Job.Compare.type);
+                return (Job.Requester is Inventory && ProfileCompare(((Inventory)Job.Requester).Profile, tallyType.TypeId, out DestinationTarget, true))
+                    || (Job.Compare.type == "any" || tallyType.TypeId == Job.Compare.type);
                     //(Job.Compare != null && (Job.TypeCompare == "any" || type.TypeId == Job.TypeCompare)) ||
             }
-            /*public override bool DoWork()
-            {
-                return true; // ?
-            }*/
+
             public override WorkResult ChainCall()
             {
                 Chain.Job.CopyJobMeta(Job);
                 Chain.Job.WIxA = SIx;
                 Chain.SetSearchCount();
-
-                //Dlog($"raw compares: {Chain.Job.TypeCompare != null}/{Chain.Job.SubCompare != null} ");
-
-                //Dlog($"Sub searchCount: {Chain.Job.SearchCount}");
 
                 return Chain.WorkLoad();// WorkLoad(ChainJob);
             }
@@ -1556,8 +1527,6 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 Chain.Job.WIxA = Job.WIxA;
                 Chain.Job.WIxB = SIx;
                 Chain.SetSearchCount();
-
-                Dlog($"raw compares: {Chain.Job.Compare.Type() != null}/{Chain.Job.Compare.sub != null}");
 
                 return Chain.WorkLoad();
             }
@@ -1629,7 +1598,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 return
                     (
 
-                    ( TypeCompare(current, Job.ItemTypeCompare) )
+                    ( Job.JobType == JobType.EXISTS && TypeCompare(current, Job.ItemTypeCompare) )
 
                     ||
 
@@ -1970,6 +1939,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 base.Run();
 
                 InventorySearch.Job.Requester = Queue[0];
+                //InventorySearch.Job.SlotCompare(Queue[0]);
                 InventorySearch.SetSearchCount();
 
                 if (!Queue[0].Refresh() || Browse())
@@ -2128,7 +2098,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                     case WorkResult.NONE_CONTINUE: // Link(s) missing, or slots need fulfilling
 
-                        if (moving.Flow.OUT == 1 && !moving.DumpQueued)
+                        if (moving.Flow.OUT == 1 && !moving.DumpQueued && !moving.CheckBroken())
                         {
                             Dlog("Adding to dump queue...");
                             Program.Dumper.Queue.Add(moving);
@@ -2201,10 +2171,10 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             public ItemBrowser(Program prog, bool active = true) : base(prog, active)
             {
                 TypeFind = new TypeWork(prog.ROOT, this);
-                TypeFind.Job = new JobMeta(JobType.FIND, WorkType.NONE, WorkResult.NONE_CONTINUE);
+                TypeFind.Job = new JobMeta(JobType.FIND, WorkType.NONE, WorkResult.TYPE_FOUND);
 
                 SubFind = new SubWork(prog.ROOT, this);
-                SubFind.Job = new JobMeta(JobType.FIND, WorkType.NONE, WorkResult.NONE_CONTINUE);
+                SubFind.Job = new JobMeta(JobType.FIND, WorkType.NONE, WorkResult.SUB_FOUND);
                 TypeFind.Chain = SubFind;
 
                 SlotMatch = new SlotWork(prog.ROOT, this);
@@ -2277,6 +2247,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 }
             }
         }
+
         public class AssemblyCleaner : Op
         {
             public AssemblyCleaner(Program prog, bool active) : base(prog, active)
@@ -3258,7 +3229,10 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 IMyInventory input = PullInventory();
                 return (float)input.CurrentVolume / (float)input.MaxVolume > CLEAN_MIN;
             }
-            
+            public bool CheckOverride()
+            {
+                return this is Producer && Profile.FILL;
+            }
 
             public bool EmptyCheck()
             {
@@ -3379,7 +3353,9 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             target.Dlog("Performing Force Transfer...");
 
             MyFixedPoint? allowed = AllowableReturn(targetAllowed, source);
-                
+
+            target.Dlog($"Allowed: {(!allowed.HasValue ? "All" : $"{allowed.Value}" )}");
+
             return target.PullInventory().TransferItemFrom(source.Container, source.ItemIndex, null, null, allowed);
         }
         static bool TallyTransfer(Slot source, Slot dest)
@@ -3446,27 +3422,32 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         #region Comparisons
         static bool ProfileCompare(Inventory destination, Slot source, out MyFixedPoint? target, bool dirIn = true)
         {
+            destination.Dlog("Profile Compare");
             target = 0;
 
-            if (!destination.PullInventory().IsConnectedTo(source.Inventory.PullInventory(false)))
+            if (!destination.PullInventory().IsConnectedTo(source.Container))
             {
                 source.Dlog("No Connection!");
                 return false;
             }
 
-            return dirIn ? source.Flow.OUT > -1 && ProfileCompare(destination.Profile, source.SnapShot.Type, out target) :
+            return dirIn ? (source.Flow.OUT > -1 || destination.CheckOverride()) && ProfileCompare(destination.Profile, source.SnapShot.Type, out target) :
+
                            source.Flow.IN > -1 && ProfileCompare(destination.Profile, source.SnapShot.Type, out target, false);
         }
         static bool ProfileCompare(FilterProfile profile, MyItemType type, out MyFixedPoint? target, bool dirIn = true)
         {
+            profile.Dlog("Item Compare");
             return ProfileCompare(profile, type.TypeId, type.SubtypeId, out target, dirIn);
         }
         static bool ProfileCompare(FilterProfile profile, string type, out MyFixedPoint? target, bool dirIn = true)
         {
+            profile.Dlog("Type Compare");
             return ProfileCompare(profile, type, "any", out target, dirIn);
         }
         static bool ProfileCompare(FilterProfile profile, out MyFixedPoint? target, string sub, bool dirIn = true)
         {
+            profile.Dlog("Sub Compare");
             return ProfileCompare(profile, "any", sub, out target, dirIn);
         }
 
@@ -3512,6 +3493,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
             allow = match ? allow : auto;
 
+            profile.Dlog($"Full Compare Allow: {allow}");
+
             return allow;
         }
 
@@ -3524,6 +3507,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         }
         static bool FilterCompare(Filter A, string typeB, string subB)
         {
+            A.Dlog("Filter Compare");
             return FilterCompare(A,
                 A.Compare.type, A.Compare.sub,
                 typeB, subB);
@@ -3532,16 +3516,17 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         {
             if (A != "any" && b != "any" && !Contains(A, b) && !Contains(b, A))
             {
-
+                dbug.Dlog("Type mis-match!");
                 return false;
             }
 
             if (a != "any" && B != "any" && !Contains(a, B) && !Contains(B, a))
             {
-
+                dbug.Dlog("Sub mis-match!");
                 return false;
             }
 
+            dbug.Dlog("Full match!");
             return true;
         }
         static bool Contains(string source, string target)
@@ -3560,6 +3545,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         }
         static bool SlotCompare(Slot Req, Slot Can)
         {
+            Req.Dlog("Slot Compare!");
+
             return
                 Req != Can && Can.Refresh() && /*Req.Refresh() &&*/ // Requester is expected to have refreshed already
                 Req.SnapShot.Type == Can.SnapShot.Type &&           // Only type match, handle flow externally
@@ -3573,6 +3560,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         }
         static bool TypeCompare(Slot slot, MyItemType? type)
         {
+            slot.Dlog("Type Compare!");
             return slot != null && type.HasValue && slot.SnapShot.Type == type.Value;
         }
         #endregion
@@ -4164,7 +4152,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 RunOperations();
                 Debugging();
             }
-            catch { Debug.Append("FAIL-POINT!"); }
+            catch { Debug.Append("FAIL-POINT!\n"); }
 
         }
         public void Save()
