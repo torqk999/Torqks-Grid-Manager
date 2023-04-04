@@ -204,7 +204,30 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             Resources.Remove((Resource)block);
 
         Blocks.Remove(block);
-    }*/
+    }
+    
+     string GenerateRecipes()
+        {
+            Dictionary<MyProductionItem, VRage.ObjectBuilders.SerializableDefinitionId> recipeList = new Dictionary<MyProductionItem, VRage.ObjectBuilders.SerializableDefinitionId>();
+
+            List<MyProductionItem> nextList = new List<MyProductionItem>();
+            string finalList = string.Empty;
+
+            foreach (Assembler assembler in Assemblers)
+            {
+                assembler.ProdBlock.GetQueue(nextList);
+
+                foreach (MyProductionItem item in nextList)
+                    recipeList[item] = assembler.ProdBlock.BlockDefinition;
+            }
+
+            foreach (KeyValuePair<MyProductionItem, VRage.ObjectBuilders.SerializableDefinitionId> pair in recipeList)
+                finalList += pair.Key.BlueprintId + ":" + pair.Value.SubtypeId.ToString() + ":" + pair.Key.Amount + "\n";
+
+            return finalList;
+        }
+     
+     */
 
     #endregion
 
@@ -217,8 +240,8 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         const string CustomSig = "[CPY]";
 
         const float CLEAN_MIN = .8f;
-        const float FULL_MIN = 0.95f;
-        const float EMPTY_MAX = 0.05f;
+        const float FULL_MIN =  0.999999f;
+        const float EMPTY_MAX = 0.000001f;
 
         const int DefScrollDelay = 1;
         const int DefSigCount = 2;
@@ -378,7 +401,6 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             OP_COUNT = capped ? 0 : OP_COUNT;
             return capped;
         }
-
         #endregion
 
         #region ENUMS
@@ -1155,6 +1177,41 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                 Type = first.SnapShot.Type;
                 Append(first);
+                Setup();
+            }
+
+            public override void Setup()
+            {
+                try
+                {
+                    string[] data = Program.Me.CustomData.Split('\n');
+
+                    foreach (string nextline in data)
+                    {
+                        string[] lineblocks = nextline.Split(' ');  // Break each line into blocks
+
+                        if (lineblocks.Length < 2)  // There must be more than one block to have filter candidate and desired update
+                            return;
+
+                        if (lineblocks[0].Contains(Split)) // Filter insignia
+                        {
+                            Compare recipe = new Compare(lineblocks[0]);
+                            if (!TypeCompare(recipe, Type, this))
+                                continue;
+                        }
+
+                        for (int i = 1; i < lineblocks.Length; i++) // iterate through the remaining blocks
+                        {
+                            switch (lineblocks[i][0])
+                            {
+                                case '#':   // set a new target value
+                                    TargetGoal = (MyFixedPoint)float.Parse(lineblocks[i].Remove(0, 1));
+                                    break;
+                            }
+                        }
+                    }
+                }
+                catch { Dlog("Recipe Setup Failed!"); }
             }
 
             public Slot GetSlot(TallyGroup group, int index)
@@ -1490,7 +1547,6 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         }
         public class SubWork : Work
         {
-
             public SubWork(RootMeta meta, Op op) : base(meta, op)
             {
                 Name = "SUBTYPE";
@@ -1589,6 +1645,9 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             {
                 Slot current = Current();
                 if (current == null)
+                    return false;
+
+                if (!current.Refresh())
                     return false;
 
                 Dlog($"Checking slot: [{current.InventoryName()}:{current.SnapShot.Type.SubtypeId}]");
@@ -1711,20 +1770,27 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             }
             void SlotLink()
             {
-                if (!Compare())
-                {
-                    Dlog("Bad compare!");
-                    return;
-                }
-
                 Slot queued = (Slot)Job.Requester;
                 Slot match = Current();
 
                 Dlog($"Filter queued|match IN/OUT: {queued.Flow.IN}/{queued.Flow.OUT}|{match.Flow.IN}/{match.Flow.OUT}\n" +
                     $"Links IN/OUT: {(queued.InLink == null ? "None" : $"{queued.InLink.InventoryName()}")}/{(queued.OutLink == null ? "None" : $"{queued.OutLink.InventoryName()}")}");
 
+                if (match.CheckLinkable())
+                {
+                    Dlog("Do not link producers together!");
+                    return;
+                }
+
+                if (!Compare())
+                {
+                    Dlog("Bad compare!");
+                    return;
+                }
+
                 if (queued.Flow.IN == 1 &&
                     queued.InLink == null &&
+                    //!match.CheckLinkable() &&
                     (queued.CheckOverride() ||
                     match.Flow.OUT > -1))
                 {
@@ -1736,6 +1802,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
                 if (queued.Flow.OUT == 1 &&
                     queued.OutLink == null &&
+                    //!match.CheckLinkable() &&
                     match.Flow.IN > -1)
                 {
                     Dlog($"Out Link Made!");
@@ -1746,14 +1813,22 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             }
             void SlotMove()
             {
+                Slot requester = (Slot)Job.Requester;
+                Slot candidate = Current();
+
+                if (candidate.CheckLinkable())
+                {
+                    Dlog("Do not pull from links!");
+                    return;
+                }
+
                 if (!Compare())
                 {
                     Dlog("Bad compare!");
                     return;
                 }
 
-                Slot requester = (Slot)Job.Requester;
-                Slot candidate = Current();
+                
 
                 if (requester.Flow.IN == 1 && MoveCompare(candidate, requester))
                 {
@@ -2077,16 +2152,16 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 SlotLink.Job.Requester = Program.MoveRequests[WorkIndex];
                 SlotLink.SetSearchCount();
 
-                if (Move())
+                if (Match())
                 {
                     SlotLink.SIx = 0;
                     Next();
                 }
             }
-            bool Move()
+            bool Match()
             {
                 Slot moving = Program.MoveRequests[WorkIndex];
-                Dlog($"Linking TallySlot: {moving.SnapShot.Type}");
+                Dlog($"Matcher TallySlot: {moving.SnapShot.Type}");
 
                 switch (SlotLink.WorkLoad())
                 {
@@ -2180,7 +2255,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 SubFind.Chain = SlotMatch;
 
                 SlotBrowse = new SlotWork(prog.ROOT, this);
-                SlotBrowse.Job = new JobMeta(JobType.WORK, WorkType.BROWSE, WorkResult.SLOT_FOUND, WorkResult.NONE_CONTINUE, TallyGroup.AVAILABLE);
+                SlotBrowse.Job = new JobMeta(JobType.WORK, WorkType.BROWSE, /*WorkResult.SLOT_FOUND*/WorkResult.NONE_CONTINUE, WorkResult.NONE_CONTINUE, TallyGroup.AVAILABLE);
                 SlotMatch.Chain = SlotBrowse;
 
                 Name = "BROWSE";
@@ -2796,6 +2871,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                             lineCount = 2;
                             return;
                         }
+
                         else
                         {
                             FAP(blocks[0]);
@@ -2834,6 +2910,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                                 lineCount = 3;
                                 return;
                             }
+
                             else
                             {
                                 FAP(blocks[0]);
@@ -3220,7 +3297,13 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             }
             public bool CheckEmpty(IMyInventory target)
             {
-                return (float)target.CurrentVolume / (float)target.MaxVolume < EMPTY_MAX;
+                Dlog($"Check Empty : (Current){target.CurrentVolume} / (Max){target.MaxVolume}");
+
+                float filled = (float)target.CurrentVolume / (float)target.MaxVolume;
+
+                Dlog($"Fill percent: {filled * 100}%");
+
+                return filled < EMPTY_MAX;
             }
             public bool CheckClogged()
             {
@@ -3346,6 +3429,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             group.GetBlocks(blocks);
             return true;
         }
+
         static bool ForceTransfer(Inventory target, MyFixedPoint? targetAllowed, Slot source)
         {
             target.Dlog("Performing Force Transfer...");
@@ -3385,16 +3469,21 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         }
         static MyFixedPoint? AllowableReturn(Slot dest, Slot moving)
         {
-            return AllowableReturn(dest.Flow.FILL > 0 ? dest.Flow.FILL - dest.SnapShot.Amount : 0, moving);
+            return AllowableReturn(dest.Flow.FILL.HasValue? dest.Flow.FILL - dest.SnapShot.Amount : null/*dest.SnapShot.Amount*/, moving);
         }
         static MyFixedPoint? AllowableReturn(MyFixedPoint? destTarget, Slot moving)
         {
-            MyFixedPoint allow = moving.Flow.FILL.HasValue ? moving.SnapShot.Amount - moving.Flow.FILL.Value : moving.CheckLinkable() ? moving.SnapShot.Amount - 1 : 0;
+            moving.Dlog($"Destination Target: {(destTarget.HasValue ? destTarget.Value.ToString() : "all")}");
+
+            MyFixedPoint? allow = moving.Flow.KEEP.HasValue ? moving.SnapShot.Amount - moving.Flow.KEEP.Value : moving.CheckLinkable() ? (MyFixedPoint?)(moving.SnapShot.Amount - 1) : null/*moving.SnapShot.Amount*/;
+            moving.Dlog($"Allowed to move out: {allow}");
+
             MyFixedPoint? output = MaximumReturn(destTarget, allow);
+            moving.Dlog($"Maximum return: {(output.HasValue ? output.Value.ToString() : "all")}");
+
             return output.HasValue ? output.Value < 0 ? 0 : output : null;
         }
 
-        
         static ProdMeta? ReadRecipe(string recipe, RootMeta meta)
         {
             try
@@ -3451,7 +3540,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
         static bool ProfileCompare(FilterProfile profile, string type, string sub, out MyFixedPoint? target, bool dirIn = true)
         {
-            target = 0;
+            target = null;
             if (profile == null)
                 return true;
 
@@ -3473,10 +3562,27 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 match = true;
                 allow = true; // re-try
 
-                if (filter.Flow.IN == -1 &&
+                if (dirIn)
+                {
+                    if (filter.Flow.IN == -1)
+                        allow = false;
+                    else
+                        target = filter.Flow.FILL;
+                }
+
+                if (!dirIn)
+                {
+                    if (filter.Flow.OUT == -1)
+                        allow = false;
+                    else
+                        target = filter.Flow.KEEP;
+                }
+
+
+                /*if (filter.Flow.IN == -1 &&
                     dirIn)
                 {
-                    target = !filter.Flow.FILL.HasValue ? target : filter.Flow.FILL;
+                    target = filter.Flow.FILL;
                     allow = false;
                 }
                     
@@ -3484,9 +3590,9 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                 if (filter.Flow.OUT == -1 &&
                     !dirIn)
                 {
-                    target = !filter.Flow.KEEP.HasValue ? target : filter.Flow.KEEP;
+                    target = filter.Flow.KEEP;
                     allow = false;
-                }
+                }*/
             }
 
             allow = match ? allow : auto;
@@ -3496,21 +3602,21 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             return allow;
         }
 
-        static bool FilterCompare(Filter A, MyProductionItem B)
+        /*static bool FilterCompare(Filter A, MyProductionItem B)
         {
-            return FilterCompare(A,
+            return FilterCompare(
                 A.Compare.type, A.Compare.sub,
-                "any"/*B.BlueprintId.TypeId.ToString()*/, // Needs further development...
-                B.BlueprintId.SubtypeId.ToString());
-        }
+                "any" B.BlueprintId.TypeId.ToString(), // Needs further development...
+                B.BlueprintId.SubtypeId.ToString(), A);
+        }*/
         static bool FilterCompare(Filter A, string typeB, string subB)
         {
             A.Dlog("Filter Compare");
-            return FilterCompare(A,
+            return FilterCompare(
                 A.Compare.type, A.Compare.sub,
-                typeB, subB);
+                typeB, subB, A);
         }
-        static bool FilterCompare(Root dbug, string A, string a, string b, string B)
+        static bool FilterCompare(string A, string a, string b, string B, Root dbug)
         {
             if (A != "any" && b != "any" && !Contains(A, b) && !Contains(b, A))
             {
@@ -3560,6 +3666,10 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
         {
             slot.Dlog("Type Compare!");
             return slot != null && type.HasValue && slot.SnapShot.Type == type.Value;
+        }
+        static bool TypeCompare(Compare recipe, MyItemType type, Root dbug)
+        {
+            return FilterCompare(recipe.type, recipe.sub, type.TypeId, type.SubtypeId, dbug);
         }
         #endregion
 
@@ -3714,6 +3824,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             {
                 ClearWraps();
                 BlockDetection();
+                //GenerateRecipes();
             }
 
             BUILT = false;
@@ -3826,26 +3937,7 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
             OP_CAP += up ? 1 : -1;
             OP_CAP = OP_CAP < OP_CAP_MIN ? OP_CAP_MIN : OP_CAP > OP_CAP_MAX ? OP_CAP_MAX : OP_CAP;
         }
-        string GenerateRecipes()
-        {
-            Dictionary<MyProductionItem, VRage.ObjectBuilders.SerializableDefinitionId> recipeList = new Dictionary<MyProductionItem, VRage.ObjectBuilders.SerializableDefinitionId>();
-
-            List<MyProductionItem> nextList = new List<MyProductionItem>();
-            string finalList = string.Empty;
-
-            foreach (Assembler assembler in Assemblers)
-            {
-                assembler.ProdBlock.GetQueue(nextList);
-
-                foreach (MyProductionItem item in nextList)
-                    recipeList[item] = assembler.ProdBlock.BlockDefinition;
-            }
-
-            foreach (KeyValuePair<MyProductionItem, VRage.ObjectBuilders.SerializableDefinitionId> pair in recipeList)
-                finalList += pair.Key.BlueprintId + ":" + pair.Value.SubtypeId.ToString() + ":" + pair.Key.Amount + "\n";
-
-            return finalList;
-        }
+        
         void ClearQue()
         {
             foreach (Assembler producer in Assemblers)
@@ -4014,9 +4106,10 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
                     ClearAllBlockTags();
                     break;
 
-                case "GENERATE":
-                    Me.CustomData = GenerateRecipes();
-                    break;
+                //case "GENERATE":
+                    //GenerateRecipes();
+                    //Me.CustomData = GenerateRecipes();
+                    //break;
 
                 case "CLEARQUE":
                     ClearQue();
@@ -4062,8 +4155,6 @@ for (int i = startIndex; i < count && (i - startIndex) < lineCap; i++)
 
             }
         }
-
-        
 
         void ProgEcho()
         {
