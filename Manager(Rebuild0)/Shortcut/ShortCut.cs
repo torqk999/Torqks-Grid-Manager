@@ -1997,11 +1997,13 @@ namespace IngameScript
                 SubTypes.Append(first);
                 TypeId = first.Type.TypeId;
                 Name = Type();
+                if (Name == "")
+                    Name = "Miscellaneous";
             }
 
             public string Type()
             {
-                return TypeId.Replace(LEGACY_TYPE_PREFIX, "");
+                return TypeId.Replace(LEGACY_TYPE_PREFIX, "").Replace("Physical","").Replace("Object", "");
             }
 
             /*public override char MyChar()
@@ -2063,6 +2065,7 @@ namespace IngameScript
             public void SetQuota(MyFixedPoint? quote = null)
             {
                 Dlog($"Quote: {(quote.HasValue ? $"{quote.Value}" : "None")}");
+                //Program.AllItemTypes[ListIndices[(int)RootListType.TYPE_ALL]]
                 TargetQuota = quote;
             }
             public override MyFixedPoint? MyQuota()
@@ -3090,7 +3093,8 @@ namespace IngameScript
                 base.Run();
 
                 Page working = Program.Displays[WorkIndex].MyPage;
-                if (working != null && working.ReBuild)
+                if (working != null &&
+                    (working.ReBuild || !Complete))
                 {
                     working.BuildBody();
                     working.ReBuild = false;
@@ -3381,7 +3385,14 @@ namespace IngameScript
                 if (Assign())
                 {
                     QuotaAssign.Reset();
+                    bool oldComplete = Complete;
                     Next();
+                    if (oldComplete != Complete) // Edge case where Quotas affect what shows up in pager (Fill bars!)
+                    {
+                        Program.Pager.Complete = false;
+                        Program.Pager.WorkIndex = 0;
+                    }
+                        
                 }
             }
 
