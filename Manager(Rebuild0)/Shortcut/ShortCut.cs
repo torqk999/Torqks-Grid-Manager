@@ -355,14 +355,15 @@ namespace IngameScript
         const float EMPTY_MAX = 0.000001f;
 
         const int DefScrollDelay = 1;
-        const int DefSigCount = 2;
+        const int DefSigCount = 0;
         const int OP_CAP_MAX = 50;
         const int OP_CAP_DEF = 30;
         const int OP_CAP_MIN = 10;
+        const int FLIM_FLAM_DELAY = 50;
 
         const bool TAKE_OVER = false;
 
-        static UpdateFrequency INIT_FREQ = UpdateFrequency.None;
+        static UpdateFrequency INIT_FREQ = UpdateFrequency.Update1;
         /// WARNING!! DO NOT GO FURTHER USER!! ///
 
         const string Version = "TGM v3.1";
@@ -391,10 +392,17 @@ namespace IngameScript
         bool SETUP;
         bool BREAK;
 
+        bool FLIM_FLAM;
+
         const string LEGACY_TYPE_PREFIX = "MyObjectBuilder_";
         const string Seperator = "/";
         const char Split = '/';
-        const string Bar = "=";
+        const char Bar = '=';
+        const char A = '<';
+        const char B = '~';
+        const char C = '>';
+        const char Empty = ' ';
+        const char Full = '=';
         static readonly char[] EchoLoop =
         {
             '%',
@@ -416,7 +424,9 @@ namespace IngameScript
         int ROOT_INDEX = 0;
         int OP_CAP = OP_CAP_DEF;
         int OP_COUNT = 0;
-        int DISPLAY_SCROLL_TIMER;
+        int DISPLAY_SCROLL_TIMER = 0;
+        int FLIM_FLAM_UPDATE = 0;
+        
         int EchoCount = 0;
         int CurrentOp = -1;
         int AuxIndex = 0;
@@ -546,7 +556,7 @@ namespace IngameScript
             HEADER,
             SUB_HEADER,
             FOOTER,
-            INVENTORY,
+            VALUE,
             RESOURCE,
             STATUS,
             FILTER,
@@ -649,6 +659,7 @@ namespace IngameScript
         {
             public string Signature;
             public string Name;
+            public char Char;
             public int RootID;
             public int[] ListIndices;
 
@@ -657,6 +668,7 @@ namespace IngameScript
             {
                 Signature = meta.Signature;
                 Name = "NewRoot";
+                Char = (char)0x0000;
                 Program = meta.Program;
                 RootID = Program.RequestIndex();
                 ListIndices = new int[ROOT_LIST_BUFFER_SIZE];
@@ -666,6 +678,10 @@ namespace IngameScript
             public virtual string MyName()
             {
                 return Name;
+            }
+            public virtual char MyChar()
+            {
+                return Char;
             }
             public virtual MyFixedPoint CurrentAmount()
             {
@@ -871,30 +887,43 @@ namespace IngameScript
             public StringFormat Form;
             public Root Source;
             public string[] RawData;
+            public char Char;
 
+            
             public StringMeta(StringFormat form)
             {
                 Form = form;
                 Source = null;
                 RawData = null;
+                Char = (char)0x0000;
+            }
+            public StringMeta(StringFormat form, char single)
+            {
+                Form = form;
+                Source = null;
+                RawData = null;
+                Char = single;
             }
             public StringMeta(StringFormat form, string single)
             {
                 Form = form;
                 Source = null;
                 RawData = new string[] { single };
+                Char = (char)0x0000;
             }
             public StringMeta(StringFormat form, string[] data)
             {
                 Form = form;
                 Source = null;
                 RawData = data;
+                Char = (char)0x0000;
             }
             public StringMeta(StringFormat form, Root source)
             {
                 Form = form;
                 Source = source;
                 RawData = null;
+                Char = (char)0x0000;
             }
         }
 
@@ -1449,7 +1478,7 @@ namespace IngameScript
                         if (!ProfileCompare(MyDisplay.Profile, subType.Type, out blah))
                             continue;
 
-                        AppendLineSource(StringFormat.INVENTORY, subType);
+                        AppendLineSource(StringFormat.VALUE, subType);
                     }
 
                     AppendRawString(StringFormat.BODY);
@@ -1966,6 +1995,27 @@ namespace IngameScript
             {
                 return TypeId.Replace(LEGACY_TYPE_PREFIX, "");
             }
+
+            /*public override char MyChar()
+            {
+                switch(Name)
+                {
+                    case "Ore":
+                        return '*';//rgb(200, 0, 0);//(char)0x25A9;
+
+                    case "Ingot":
+                        return '$';//rgb(0, 200, 0);//(char)0x25B1;
+
+                    case "Component":
+                        return '@';//rgb(0, 0, 200);//(char)0x25A3;
+
+                    case "AmmoMagazine":
+                        return 
+
+                    default:
+                        return Bar;
+                }
+            }*/
         }
         public class TallyItemSub : Root
         {
@@ -2794,8 +2844,8 @@ namespace IngameScript
             public override bool Compare()
             {
                 return
-                    (Job.WorkType == WorkType.QUOTE && RawCompare(((TallyItemSub)Job.Requester).Type, PageBuffer[SearchIndex], out FixedPoint, this))
 
+                    (Job.WorkType == WorkType.QUOTE && RawCompare(((TallyItemSub)Job.Requester).Type, PageBuffer[SearchIndex], out FixedPoint, this))
 
                     ;
             }
@@ -3299,7 +3349,7 @@ namespace IngameScript
                 QuotaAssign.Job = new JobMeta(JobType.FIND, WorkType.QUOTE, WorkResult.SUB_FOUND);
 
                 ProducerAssign = new AssemblerWork(prog.ROOT, this);
-                ProducerAssign.Job = new JobMeta(JobType.WORK, WorkType.QUOTE);
+                ProducerAssign.Job = new JobMeta(JobType.WORK, WorkType.QUOTE, WorkResult.SUB_FOUND, WorkResult.SUB_FOUND);
                 QuotaAssign.Chain = ProducerAssign;
 
                 Name = "QUOTAS";
@@ -3637,6 +3687,10 @@ namespace IngameScript
                                 {
                                     AutoScroll = !nextline.Contains("-");
                                 }
+                                if (Contains(nextline, "sig"))
+                                {
+                                    Meta.SigCount = Convert.ToInt32(BlockBuffer[1]);
+                                }
                                 if (Contains(nextline, "f_size"))
                                 {
                                     Panel.FontSize = Convert.ToInt32(BlockBuffer[1]);
@@ -3719,7 +3773,7 @@ namespace IngameScript
                     if (Program.DISPLAY_SCROLL_TIMER >= Timer)
                     {
                         Timer += Delay;
-                        ScrollDirection = ScrollIndex >= BodyCount - BodySize ? -1 : ScrollIndex <= 0 ? 1 : ScrollDirection;
+                        ScrollDirection = ScrollIndex >= MyPage.Body.Count - BodySize ? -1 : ScrollIndex <= 0 ? 1 : ScrollDirection;
                         Scroll(ScrollDirection);
                     }
                 }
@@ -3806,8 +3860,6 @@ namespace IngameScript
             void AppendFormattedString(StringMeta meta)
             {
                 int linecount = 1;
-                //meta.String = meta.String != null ? meta.String : "";
-                //string[] blocks = meta.String.Split(Split);
                 string[] data = meta.RawData;
                 string name = null;
                 string amount = null;
@@ -3829,7 +3881,7 @@ namespace IngameScript
 
                         case StringFormat.BAR:
                             for (int i = 0; i < CharCount; i++)
-                                FAP(Bar);
+                                FAP((meta.Char == (char)0x0000 ? Bar : meta.Char));
                             LINE();
                             break;
 
@@ -3862,7 +3914,6 @@ namespace IngameScript
 
                             bool foot = meta.Form == StringFormat.FOOTER;
                             
-
                             if (meta.Source != null)
                             {
                                 name = $" {meta.Source.MyName()} ";
@@ -3877,10 +3928,8 @@ namespace IngameScript
                                 break;
                             }
 
-                            /*if (name == "" || name == null) // Empty line
-                            {
-                                LINE(null, foot);
-                            }*/
+                            //name = $" {name} ";
+
                             if (CharCount <= name.Length) // Can header fit side dressings?
                             {
                                 LINE(name, foot);
@@ -3888,49 +3937,53 @@ namespace IngameScript
                             else // Apply Header Dressings
                             {
                                 remains = CharCount - name.Length;
+                                bool myFlimFlam = Program.FLIM_FLAM;
+
+                                //char unique = meta.Source == null ? Bar : meta.Source.MyChar();
+                                //unique = unique == (char)0x0000 ? Bar : unique;
+
 
                                 if (remains % 2 == 1)
                                 {
-                                    name += Bar;
+                                    name += myFlimFlam ? B : C;
                                     remains -= 1;
                                 }
 
                                 for (int i = 0; i < remains / 2; i++)
-                                    FAP(Bar, foot);
-
+                                {
+                                    FAP(myFlimFlam ? A : B, foot);
+                                    myFlimFlam = !myFlimFlam;
+                                }
+                                    
+                                myFlimFlam = Program.FLIM_FLAM;
                                 FAP(name, foot);
 
                                 for (int i = 0; i < remains / 2; i++)
-                                    FAP(Bar, foot);
+                                {
+                                    FAP(myFlimFlam ? C : B, foot);
+                                    myFlimFlam = !myFlimFlam;
+                                }
+                                    
 
                                 LINE(null, foot);
                             }
                             break;
 
-                        case StringFormat.INVENTORY:
-                            //if (data.Length != 2)
-                            if (meta.Source == null)/* ||
-                                !(meta.Source is Slot))*/
+                        case StringFormat.VALUE:
+                            if (meta.Source == null)
                             {
                                 LINE("Bad Source...");
                                 break;
                             }
 
-                            //Slot slot = (Slot)meta.Source;
                             name = meta.Source.MyName();
-                            amount = ParseItemTotal(meta.Source.CurrentAmount(), meta.Source.MyQuota(), Meta);//Amount(meta.Source.CurrentAmount(), Meta.SigCount);
-
+                            amount = ParseItemTotal(meta.Source.CurrentAmount(), meta.Source.MyQuota(), Meta);
 
                             if (CharCount < (name.Length + amount.Length)) // Can Listing fit on one line?
                             {
                                 LINE(name);
                                 LINE(amount);
-                                linecount = 2;
-                                //for (int i = 0; i < data.Length && i < BodySize - BodyCount; i++)
-                                //{
-                                //    LINE(data[i]);
-                                //    linecount++;
-                                //}
+                                linecount += 1;
                             }
                             else
                             {
@@ -3946,7 +3999,8 @@ namespace IngameScript
                             if (!sourceQuota.HasValue)
                                 break;
 
-                            //string quota = 
+                            FILL(meta.Source.CurrentAmount(), sourceQuota.Value);
+                            linecount += 1;
 
                             break;
 
@@ -4102,12 +4156,66 @@ namespace IngameScript
 
                     else
                         BodyCount += linecount;
-                    //FormattedStringList.Add(PageBuilder.ToString());
                 }
                 catch
                 {
                     Dlog("Bad read...");
                 }
+            }
+            void FILL(MyFixedPoint current, MyFixedPoint quota, bool foot = false)
+            {
+                float value;
+                string percent = $" {PercentBundler(current, quota, Meta.SigCount, out value)} ";
+                if (CharCount < (percent.Length)) // Can Listing fit on one line?
+                {
+                    LINE(percent);
+                }
+                else
+                {
+                    int remains = CharCount - percent.Length;
+                    //bool myFlimFlam = Program.FLIM_FLAM;
+
+                    //char unique = meta.Source == null ? Bar : meta.Source.MyChar();
+                    //unique = unique == (char)0x0000 ? Bar : unique;
+
+                    
+
+                    if (remains % 2 == 1)
+                    {
+                        percent += Empty;
+                        remains -= 1;
+                    }
+                    remains -= 2;
+                    FAP('[', foot);
+
+                    for (int i = 0; i < remains / 2; i++)
+                    {
+                        float filled = (float)i / remains;
+                        Dlog($"first half of fill: {filled}");
+                        FAP(filled * 100 <= value ? Full : Empty, foot);
+                        //myFlimFlam = !myFlimFlam;
+                    }
+
+                    //myFlimFlam = Program.FLIM_FLAM;
+                    FAP(percent, foot);
+
+                    for (int i = 0; i < remains / 2; i++)
+                    {
+                        float filled = (i + ((float)remains / 2) + percent.Length) / remains;
+                        Dlog($"second half of fill: {filled}");
+                        FAP(filled * 100 <= value ? Full : Empty, foot);
+                        //myFlimFlam = !myFlimFlam;
+                    }
+
+                    LINE("]", foot);
+                }
+            }
+            void FAP(char input, bool footer =false)
+            {
+                if (!footer)
+                    PageBuilder.Append(input);
+                else
+                    FooterBuffer.Append(input);
             }
             void FAP(string input, bool footer = false)
             {
@@ -4450,20 +4558,6 @@ namespace IngameScript
             return allow;
         }
 
-        /*static bool FilterCompare(Filter A, MyProductionItem B)
-        {
-            return FilterCompare(
-                A.Compare.type, A.Compare.sub,
-                "any" B.BlueprintId.TypeId.ToString(), // Needs further development...
-                B.BlueprintId.SubtypeId.ToString(), A);
-        }*/
-        /*static bool FilterCompare(Filter A, Compare compare)
-        {
-            A.Dlog("Filter Compare");
-            return FullCompare(
-                A.Compare.type, A.Compare.sub,
-                compare.type, compare.sub, A);
-        }*/
         static bool FilterCompare(Filter A, string typeB, string subB)
         {
             A.Dlog("Filter Compare");
@@ -4557,9 +4651,19 @@ namespace IngameScript
         #region String builders
         static string PercentBundler(MyFixedPoint current, MyFixedPoint? target, int sigCount, bool aligned = true)
         {
+            float empty;
+            return PercentBundler(current, target, sigCount, out empty, aligned);
+        }
+        static string PercentBundler(MyFixedPoint current, MyFixedPoint? target, int sigCount, out float percent, bool aligned = true)
+        {
             if (!target.HasValue)
+            {
+                percent = 100;
                 return "N/A";
-            float percent = (float)current / (float)target.Value *100;
+            }
+                
+
+            percent = (float)current / (float)target.Value * 100;
 
             if (aligned)
                 return $"%{Amount(percent, sigCount)}";
@@ -4615,7 +4719,7 @@ namespace IngameScript
                 simp = " K";
             }
 
-            string output = (value % (int)value > 0) ? Amount(value, sigCount) : value.ToString().PadRight(value.ToString().Length + sigCount + 1);
+            string output = Amount(value, sigCount);
             output += simp;
             return output;
         }
@@ -4676,7 +4780,7 @@ namespace IngameScript
         static string Amount(float value, int sigCount)
         {
             //return amount.ToString($"n{sigCount}");
-            return value % (int)value > 0 ? value.ToString($"n{sigCount}") : value.ToString().PadRight(value.ToString().Length + sigCount + 1);
+            return value % (int)value > 0 ? value.ToString($"n{sigCount}") : value.ToString($"n{0}").PadRight(value.ToString($"n{0}").Length + sigCount + (sigCount > 0? 1 : 0));
         }
         static string RawTallyItem(DisplayMeta mod, TallyItemSub sub, bool lit)
         {
@@ -4706,6 +4810,11 @@ namespace IngameScript
             return $"{(link.InLink == null ? "No Input" : link.InLink.InventoryName())}{Split}" +
                 $"{link.InventoryName()}{Split}" +
                 $"{(link.OutLink == null ? "No Output" : link.OutLink.InventoryName())}";
+        }
+
+        static char rgb(byte r, byte g, byte b)
+        {
+            return (char)(0xe100 + (r << 6) + (g << 3) + b);
         }
         #endregion
 
@@ -5163,6 +5272,12 @@ namespace IngameScript
         {
             if (Writer.HasWork())
                 DISPLAY_SCROLL_TIMER++;
+
+            if (DISPLAY_SCROLL_TIMER >= FLIM_FLAM_UPDATE)
+            {
+                FLIM_FLAM_UPDATE += FLIM_FLAM_DELAY;
+                FLIM_FLAM = !FLIM_FLAM;
+            }
         }
         void ProgEcho()
         {
