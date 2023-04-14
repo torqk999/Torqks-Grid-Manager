@@ -349,6 +349,7 @@ namespace IngameScript
         /// USER CONSTANTS ///////////////////////
         const string Signature = "[TGM]";
         const string CustomSig = "[CPY]";
+        const string Terminate = "[TERMINATE]";
 
         const float CLEAN_MIN = .8f;
         const float FULL_MIN = 0.999999f;
@@ -1478,6 +1479,9 @@ namespace IngameScript
                         if (!ProfileCompare(MyDisplay.Profile, subType.Type, out blah))
                             continue;
 
+                        if (MyDisplay.QUOTE && !subType.TargetQuota.HasValue)
+                            continue;
+
                         AppendLineSource(StringFormat.VALUE, subType);
                     }
 
@@ -1843,6 +1847,7 @@ namespace IngameScript
             public bool EMPTY;
             public bool CLEAN;
             public bool ACTIVE_CONVEYOR = true;
+            //public bool QUOTE;
 
             public FilterProfile(RootMeta meta, bool defIn = true, bool defOut = true, bool defFill = false, bool defEmpty = false) : base(meta)
             {
@@ -1871,6 +1876,9 @@ namespace IngameScript
                             continue;
 
                         /// OPTION CHANGE ///
+
+                        if (nextline == Terminate)
+                            break;
 
                         if (nextline[0] == '&')
                         {
@@ -3553,6 +3561,7 @@ namespace IngameScript
             int Timer;
 
             public bool AutoScroll;
+            public bool QUOTE;
             public DisplayMeta Meta;
 
             public Display(BlockMeta bMeta) : base(bMeta)
@@ -3686,6 +3695,10 @@ namespace IngameScript
                                 if (Contains(nextline, "auto"))
                                 {
                                     AutoScroll = !nextline.Contains("-");
+                                }
+                                if (Contains(nextline, "quot"))
+                                {
+                                    QUOTE = !nextline.Contains("-");
                                 }
                                 if (Contains(nextline, "sig"))
                                 {
