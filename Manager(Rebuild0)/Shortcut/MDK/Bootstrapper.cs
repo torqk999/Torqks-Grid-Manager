@@ -1,6 +1,4 @@
-﻿using Malware.MDKUtilities;
-
-namespace IngameScript.MDK
+﻿namespace IngameScript.MDK
 {
     public class TestBootstrapper
     {
@@ -11,7 +9,9 @@ namespace IngameScript.MDK
         static TestBootstrapper()
         {
             // Initialize the MDK utility framework
+#pragma warning disable CS0103 // The name 'MDKUtilityFramework' does not exist in the current context
             MDKUtilityFramework.Load();
+#pragma warning restore CS0103 // The name 'MDKUtilityFramework' does not exist in the current context
         }
 
         public static void Main()
@@ -20,8 +20,12 @@ namespace IngameScript.MDK
             // your script uses from the game, since they're not available outside of the game.
 
             // Create and configure the desired program.
+#pragma warning disable CS0103 // The name 'MDKFactory' does not exist in the current context
             var program = MDKFactory.CreateProgram<Program>();
+#pragma warning restore CS0103 // The name 'MDKFactory' does not exist in the current context
+#pragma warning disable CS0103 // The name 'MDKFactory' does not exist in the current context
             MDKFactory.Run(program);
+#pragma warning restore CS0103 // The name 'MDKFactory' does not exist in the current context
         }
     }
 }

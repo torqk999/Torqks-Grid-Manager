@@ -1,0 +1,3 @@
+F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\GOOD\obj\x64\Debug\GOOD.csproj.AssemblyReference.cache
+F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\GOOD\obj\x64\Debug\GOOD.exe.config
+F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\GOOD\obj\x64\Debug\GOOD.csproj.CoreCompileInputs.cache

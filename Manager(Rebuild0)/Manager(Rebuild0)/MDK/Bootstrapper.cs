@@ -1,4 +1,6 @@
-﻿using Malware.MDKUtilities;
+﻿#pragma warning disable CS0246 // The type or namespace name 'Malware' could not be found (are you missing a using directive or an assembly reference?)
+using Malware.MDKUtilities;
+#pragma warning restore CS0246 // The type or namespace name 'Malware' could not be found (are you missing a using directive or an assembly reference?)
 
 namespace IngameScript.MDK
 {

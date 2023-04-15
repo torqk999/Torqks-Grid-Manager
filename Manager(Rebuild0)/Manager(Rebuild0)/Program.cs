@@ -34,7 +34,9 @@ namespace IngameScript
         //
         // to learn more about ingame scripts.
 
+#pragma warning disable CS0542 // 'Program': member names cannot be the same as their enclosing type
         partial class Program : MyGridProgram
+#pragma warning restore CS0542 // 'Program': member names cannot be the same as their enclosing type
         {
             // This file contains your actual script.
             //
