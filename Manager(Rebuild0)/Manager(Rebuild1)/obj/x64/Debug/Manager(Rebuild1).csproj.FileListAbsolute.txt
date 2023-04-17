@@ -21,3 +21,4 @@ F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\Manager(Rebuild1)\obj\x64\Deb
 F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\Manager(Rebuild1)\obj\x64\Debug\Manager(Rebuild1).csproj.CopyComplete
 F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\Manager(Rebuild1)\obj\x64\Debug\Manager(Rebuild1).exe
 F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\Manager(Rebuild1)\obj\x64\Debug\Manager(Rebuild1).pdb
+F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\Manager(Rebuild1)\obj\x64\Debug\Manager(Rebuild1).csproj.AssemblyReference.cache

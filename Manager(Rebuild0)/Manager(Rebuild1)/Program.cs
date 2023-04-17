@@ -350,6 +350,7 @@ namespace IngameScript
         const string CustomSig = "[CPY]";
         const string Terminate = "[TERMINATE]";
 
+        const float PROD_BUFFER = 1000;
         const float CLEAN_MIN = .8f;
         const float FULL_MIN = 0.999999f;
         const float EMPTY_MAX = 0.000001f;
@@ -370,13 +371,21 @@ namespace IngameScript
 
         #region DEFAULTS
 
-        const string RefineryDefault =
+        static readonly string RefineryDefault =
             "! -in +out\n" +
-            "ore/ +in -out #1000/\n" +
+            $"ore/ +in -out #{PROD_BUFFER}/\n" +
             "&fill\n" +
-            "&empty";
+            "&empty\n" +
+            "&conveyor-";
 
-        const string DisplayDefault =
+        static readonly string AssemblerDefault =
+            "! -in +out\n" +
+            $"ingot/ +in -out #{PROD_BUFFER}/\n" +
+            "&fill\n" +
+            "&empty\n" +
+            "&conveyor-";
+
+        static readonly string DisplayDefault =
             "*default\n" +
             "&f_color 100 100 100";
 
@@ -393,6 +402,7 @@ namespace IngameScript
         bool BREAK;
 
         bool FLIM_FLAM;
+        bool ONE_TIME;
 
         const string LEGACY_TYPE_PREFIX = "MyObjectBuilder_";
         const string Seperator = "/";
@@ -623,13 +633,13 @@ namespace IngameScript
             EXISTS = 6,
         }
 
-        static public int ROOT_LIST_BUFFER_SIZE =
-            ((int)Enum.GetValues(typeof(RootListType)).Cast<RootListType>().Max() -
-             (int)Enum.GetValues(typeof(RootListType)).Cast<RootListType>().Min()) + 1; // zero based indexing
+        static public int ROOT_LIST_BUFFER_SIZE = Enum.GetValues(typeof(RootListType)).Length;
+            //((int)Enum.GetValues(typeof(RootListType)).Cast<RootListType>().Max() -
+            //(int)Enum.GetValues(typeof(RootListType)).Cast<RootListType>().Min()) + 1; // zero based indexing
 
         public enum RootListType
         {
-            DEFAULT = 0,
+            //DEFAULT = 0,
 
             SLOT_TALLY_ALL = 0,
             SLOT_QUEUE_SORT = 1,
@@ -642,15 +652,15 @@ namespace IngameScript
             SLOT_PUMP = 8,
             SLOT_MOVE = 9,
 
-            SUB_PROD = 0,
-            SUB_ALL = 1,
-            SUB_TYPE = 2,
+            SUB_PROD = 10,//0,
+            SUB_ALL = 11,//1,
+            SUB_TYPE = 12,//2,
 
-            TYPE_ALL = 0,
+            TYPE_ALL = 13,//0,
 
-            ASS_PROD = 0,
+            ASS_PROD = 14,//0,
 
-            INV_PULL = 0,
+            INV_PULL = 15,//0,
         }
         #endregion
 
@@ -884,7 +894,7 @@ namespace IngameScript
         }
         public struct StringMeta
         {
-            public StringFormat Form;
+            public StringFormat Format;
             public Root Source;
             public string[] RawData;
             public char Char;
@@ -892,35 +902,35 @@ namespace IngameScript
 
             public StringMeta(StringFormat form)
             {
-                Form = form;
+                Format = form;
                 Source = null;
                 RawData = null;
                 Char = (char)0x0000;
             }
             public StringMeta(StringFormat form, char single)
             {
-                Form = form;
+                Format = form;
                 Source = null;
                 RawData = null;
                 Char = single;
             }
-            public StringMeta(StringFormat form, string single)
+            public StringMeta(StringFormat form, string input, bool paragraph = false)
             {
-                Form = form;
+                Format = form;
                 Source = null;
-                RawData = new string[] { single };
+                RawData = input == null ? new string[1] : paragraph ? input.Split(' ') : new string[] { input };
                 Char = (char)0x0000;
             }
             public StringMeta(StringFormat form, string[] data)
             {
-                Form = form;
+                Format = form;
                 Source = null;
                 RawData = data;
                 Char = (char)0x0000;
             }
             public StringMeta(StringFormat form, Root source)
             {
-                Form = form;
+                Format = form;
                 Source = source;
                 RawData = null;
                 Char = (char)0x0000;
@@ -1157,9 +1167,9 @@ namespace IngameScript
                 AppendMeta(new StringMeta(form, data));
             }
 
-            public void AppendRawString(StringFormat format, string input = null)
+            public void AppendRawString(StringFormat format, string input = null, bool paragraph = false)
             {
-                AppendMeta(new StringMeta(format, input));
+                AppendMeta(new StringMeta(format, input, paragraph));
             }
 
             public void AppendLineSource(StringFormat format, Root root)
@@ -1170,7 +1180,7 @@ namespace IngameScript
 
             void AppendMeta(StringMeta meta)
             {
-                switch (meta.Form)
+                switch (meta.Format)
                 {
                     case StringFormat.HEADER:
                     case StringFormat.TABLE:
@@ -1447,8 +1457,16 @@ namespace IngameScript
          */
         public class DefaultPage : Page
         {
-            public DefaultPage(RootMeta meta, Display display) : base(meta, display)
+            public DefaultPage(RootMeta meta, Display display) : base(meta, display, "Default")
             {
+            }
+
+            public override void BuildBody()
+            {
+                Body.Clear();
+
+                AppendRawString(StringFormat.BODY,
+                    "This is a test paragraph for the body wrapper! Hello\nHello\nHello\nAm I working as intended?", true);
             }
         }
         public class TallyPage : Page
@@ -1461,6 +1479,9 @@ namespace IngameScript
             public override void BuildBody()
             {
                 Body.Clear();
+
+                //Dlog($"TypeCount: {Program.AllItemTypes.Count}\n" +
+                //    $"SubCount: {Program.AllItemSubs.Count}");
 
                 MyFixedPoint? blah;
                 foreach (TallyItemType type in Program.AllItemTypes)
@@ -1478,8 +1499,15 @@ namespace IngameScript
                         if (!ProfileCompare(MyDisplay.Profile, subType.Type, out blah))
                             continue;
 
+                        //Dlog("Filter pass!");
+
+                        //Dlog($"MyDisplay.QUOTE: {MyDisplay.QUOTE}\n" +
+                        //    $"subType.TargetQuota.HasValue: {subType.TargetQuota.HasValue}");
+
                         if (MyDisplay.QUOTE && !subType.TargetQuota.HasValue)
                             continue;
+
+                        //Dlog("Quota pass!");
 
                         AppendLineSource(StringFormat.VALUE, subType);
                     }
@@ -1556,7 +1584,7 @@ namespace IngameScript
 
                 Dlog("Move requests updated!");
 
-                if (/*!wasPumping && */CheckLinkable() && Flow.IsMoving())
+                if (/*!wasPumping && */IsLinkable() && Flow.IsMoving())
                     Program.PumpRequests.Append(this);
                 else
                     //if (wasPumping && !CheckLinkable())
@@ -1564,7 +1592,6 @@ namespace IngameScript
 
                 Dlog("Pump requests updated!");
             }
-
 
             public override string MyName()
             {
@@ -1576,7 +1603,8 @@ namespace IngameScript
             }
             public override MyFixedPoint CurrentAmount()
             {
-                return SnapShot.Amount;
+                MyInventoryItem? item = PullItem();
+                return item.HasValue ? item.Value.Amount : 0;
             }
             public void Update(int index)
             {
@@ -1671,6 +1699,11 @@ namespace IngameScript
                 Dlog($"Container null: {Container == null}");
                 return Container == null ? null : Container.GetItemAt(ItemIndex);
             }
+            public bool CheckSlot()
+            {
+                MyInventoryItem? empty;
+                return CheckSlot(out empty);
+            }
             public bool CheckSlot(out MyInventoryItem? check)
             {
                 Dlog("Checking slot...");
@@ -1688,15 +1721,19 @@ namespace IngameScript
                 Dlog($"Slot {InventoryName()} is {(result ? "Still Good!" : "Broken!")}");
                 return result;
             }
-            public bool CheckOverride()
+            public bool HasOverride()
             {
                 return Inventory is Producer && Flow.IN == 1;
             }
-            public bool CheckLinkable()
+            public bool IsLinkable()
             {
-                return Inventory is Producer;// && Flow.IsMoving();
+                return (Inventory is Producer && Inventory.IsManaged()) || IsStockpile();
             }
-            public bool CheckLinked()
+            public bool IsStockpile()
+            {
+                return Flow.IN == 1 && Flow.OUT == -1;
+            }
+            public bool IsLinked()
             {
                 if (Flow.IN == 1 && InLink == null)
                 {
@@ -1713,27 +1750,27 @@ namespace IngameScript
                 Dlog("Fully Linked!");
                 return true;
             }
-            public bool CheckSorted()
+            public bool IsSorted()
             {
                 return Profile != null;
             }
-            public bool CheckBroken()
+            public bool IsBroken()
             {
-                return !Refresh() || !CheckSorted();
+                return !Refresh() || !IsSorted();
             }
-            public bool CheckFull()
+            public bool IsFull()
             {
-                return CheckFilled() || Inventory.CheckFull(Container);
+                return IsFilled() || Inventory.CheckFull(Container);
             }
-            public bool CheckFilled()
+            public bool IsFilled()
             {
                 return /*Filter.IN == 1 && */Flow.FILL.HasValue && SnapShot.Amount >= Flow.FILL;
             }
-            public bool CheckEmpty()
+            public bool IsEmpty()
             {
-                return CheckEmptied() || Inventory.CheckEmpty(Container);
+                return IsEmptied() || Inventory.CheckEmpty(Container);
             }
-            public bool CheckEmptied()
+            public bool IsEmptied()
             {
                 return /*Filter.OUT == 1 && */Flow.KEEP.HasValue && SnapShot.Amount <= Flow.KEEP;
             }
@@ -1795,7 +1832,7 @@ namespace IngameScript
                     Program.MoveRequests.Remove(this);
                 }
 
-                if (CheckLinkable())
+                if (IsLinkable())
                 {
                     Program.PumpRequests.Remove(this);
                 }
@@ -2101,6 +2138,7 @@ namespace IngameScript
             public JobMeta Job;
             public MyFixedPoint? FixedPoint;
 
+            public int IterationIndex;
             public int SearchIndex;
             public int SearchCount;
 
@@ -2119,7 +2157,8 @@ namespace IngameScript
 
             public void Reset()
             {
-                SearchIndex = 0;
+                IterationIndex = 0;
+                //SearchIndex = 0;
                 if (Chain != null)
                     Chain.Reset();
             }
@@ -2140,13 +2179,17 @@ namespace IngameScript
                 return WorkResult.NONE_CONTINUE;
             }
 
-            WorkResult IterateScope(bool forward)
+            public virtual WorkResult IterateScope(bool forward)
             {
+
                 WorkResult myResult = WorkResult.NONE_CONTINUE;
                 //for (int i = SearchIndex; forward ? i < SearchCount : i > -1; forward ? i + 1: i - 1)
-                for (int i = forward ? SearchIndex : SearchCount - (SearchIndex + 1); i < SearchCount; i++)
+                //for (int i = forward ? SearchIndex : SearchCount > 0 ? SearchCount - (SearchIndex + 1) : 0 ; i < SearchCount; i++)
+                for (int i = IterationIndex; i < SearchCount; i++)
                 {
+                    IterationIndex = i;
                     SearchIndex = forward ? i : SearchCount - (i + 1);
+                    Dlog($"forward: {forward} / IterationIndex: {IterationIndex} / SearchIndex: {SearchIndex} / SearchCount: {SearchCount}");
                     myResult = IterateProc();
 
                     if (myResult == WorkResult.OVERHEAT)
@@ -2164,6 +2207,10 @@ namespace IngameScript
                             if (chainResult == WorkResult.OVERHEAT)
                                 return chainResult;
 
+                            if (Chain.Job.JobType == JobType.EXISTS &&
+                                chainResult == WorkResult.EXISTS)
+                                continue;
+
                             if (chainResult > 0)
                                 return chainResult;
                         }
@@ -2172,7 +2219,8 @@ namespace IngameScript
 
                     if (Job.JobType == JobType.EXISTS && myResult > 0)
                     {
-                        SearchIndex = 0; // May fall back into search
+                        IterationIndex = 0;
+                        //SearchIndex = 0; // May fall back into search
                         Dlog("Found Existing!");
                         return myResult;
                     }
@@ -2189,7 +2237,8 @@ namespace IngameScript
 
                 if (Job.JobType == JobType.EXISTS && Chain != null)
                 {
-                    SearchIndex = 0; // May fall back into search
+                    IterationIndex = 0;
+                    //SearchIndex = 0; // May fall back into search
                     return ChainCall();
                 }
 
@@ -2324,6 +2373,7 @@ namespace IngameScript
 
                     case WorkType.PROD:
                         AssemblerList = ((TallyItemSub)Job.Requester).Assemblers;
+                        Dlog($"Producing {((TallyItemSub)Job.Requester).MyName()} from {AssemblerList.Count} assemblers...");
                         break;
                 }
 
@@ -2349,9 +2399,16 @@ namespace IngameScript
                 switch (Job.WorkType)
                 {
                     case WorkType.QUOTE:
+
+                        
                         Assembler candidate = Current();
+                        Dlog($"Checking assembler {candidate.MyName()} ({SearchIndex}/{SearchCount})");
                         if (candidate != null && CanAssemble())
+                        {
                             ((TallyItemSub)Job.Requester).Assemblers.Add/*Append*/(candidate);
+                            Dlog($"Assembler added to eligable list: {candidate.MyName()}/{((TallyItemSub)Job.Requester).MyName()}");
+                        }
+                            
                         return false; // keep working
 
                     //case WorkType.PROD:
@@ -2365,8 +2422,10 @@ namespace IngameScript
             bool CanAssemble()
             {
                 IMyAssembler assembler = Program.Assemblers[SearchIndex].AssemblerBlock;
-                MyItemType type = ((TallyItemSub)Job.Requester).Type;
-                return assembler.CanUseBlueprint(type);
+                MyDefinitionId? recipe = Recipe(((TallyItemSub)Job.Requester).Type);
+                Dlog($"Type: {((TallyItemSub)Job.Requester).Type}\n" +
+                    $"Recipe: {(recipe.HasValue ? recipe.Value.ToString() : "None")}");
+                return recipe.HasValue && assembler.CanUseBlueprint(recipe.Value);
             }
         }
         public class TypeWork : Work
@@ -2426,6 +2485,7 @@ namespace IngameScript
 
                 switch (Job.WorkType)
                 {
+                    case WorkType.BROWSE:
                     case WorkType.SORT:
                         SubList = Program.AllItemTypes[Job.WIxA].SubTypes;
                         break;
@@ -2460,7 +2520,11 @@ namespace IngameScript
                 Chain.Job.CopyJobMeta(Job);
 
                 if (Chain.Job.JobType == JobType.EXISTS)
+                {
+                    Dlog($"Setting Chain Type Compare: {Current().Type}");
                     Chain.Job.ItemTypeCompare = Current().Type;
+                }
+                    
 
                 Chain.Job.WIxA = Job.WIxA;
                 Chain.Job.WIxB = SearchIndex;
@@ -2500,7 +2564,7 @@ namespace IngameScript
                         break;
 
                     case WorkType.MATCH:
-                        if (Job.Requester is Slot && !((Slot)Job.Requester).CheckBroken())
+                        if (Job.Requester is Slot && !((Slot)Job.Requester).IsBroken())
                         {
                             SlotList = ((Slot)Job.Requester).Profile.Tallies[(int)RootListType.SLOT_TALLY_AVAILABLE];
                         }
@@ -2545,22 +2609,18 @@ namespace IngameScript
                 if (!current.Refresh())
                     return false;
 
-                Dlog($"Checking slot: [{current.InventoryName()}:{current.SnapShot.Type.SubtypeId}]");
+                Dlog($"Checking slot: [{current.InventoryName()}:{current.SnapShot.Type.SubtypeId}]\n" +
+                    $"Current ItemTypeCompare: {(Job.ItemTypeCompare.HasValue ? $"{Job.ItemTypeCompare.Value}" : "None")}");
 
-                return
-                    (
-
-                    (Job.JobType == JobType.EXISTS && TypeCompare(current, Job.ItemTypeCompare))
-
-                    ||
-
-                    (Job.Requester is Inventory && ProfileCompare((Inventory)Job.Requester, current, out FixedPoint))
-
-                    ||
-
-                    (Job.Requester is Slot && SlotCompare((Slot)Job.Requester, current, out FixedPoint))
-
-                    );
+                if (Job.Requester is Inventory)
+                {
+                    if (Job.JobType == JobType.EXISTS)
+                        return TypeCompare(Job.ItemTypeCompare.Value, current);
+                    else
+                        return ProfileCompare((Inventory)Job.Requester, current, out FixedPoint);
+                }
+                    
+                return Job.Requester is Slot && SlotCompare((Slot)Job.Requester, current, out FixedPoint);
             }
 
             public override bool DoWork()
@@ -2643,10 +2703,10 @@ namespace IngameScript
                     Dlog("Broken slot, skipping...");
                     return true;
                 }
-                if (requester.CheckLinkable()) // Moving handled by pumper, only search for links
+                if (requester.IsLinkable()) // Moving handled by pumper, only search for links
                 {
                     Dlog("Link-able!");
-                    if (requester.CheckLinked())
+                    if (requester.IsLinked())
                     {
                         Dlog("Already linked!");
                         return true;
@@ -2671,7 +2731,7 @@ namespace IngameScript
                 Dlog($"Filter queued|match IN/OUT: {queued.Flow.IN}/{queued.Flow.OUT}|{match.Flow.IN}/{match.Flow.OUT}\n" +
                     $"Links IN/OUT: {(queued.InLink == null ? "None" : $"{queued.InLink.InventoryName()}")}/{(queued.OutLink == null ? "None" : $"{queued.OutLink.InventoryName()}")}");
 
-                if (match.CheckLinkable())
+                if (match.IsLinkable())
                 {
                     Dlog("Do not link producers together!");
                     return;
@@ -2686,7 +2746,7 @@ namespace IngameScript
                 if (queued.Flow.IN == 1 &&
                     queued.InLink == null &&
                     //!match.CheckLinkable() &&
-                    (queued.CheckOverride() ||
+                    (queued.HasOverride() ||
                     match.Flow.OUT > -1))
                 {
                     Dlog($"In Link Made!");
@@ -2699,7 +2759,7 @@ namespace IngameScript
                     queued.OutLink == null &&
                     //!match.CheckLinkable() &&
                     match.Flow.IN > -1 &&
-                    !match.CheckLinkable())
+                    !match.IsLinkable())
                 {
                     Dlog($"Out Link Made!");
 
@@ -2712,7 +2772,7 @@ namespace IngameScript
                 Slot requester = (Slot)Job.Requester;
                 Slot candidate = Current();
 
-                if (candidate.CheckLinkable())
+                if (candidate.IsLinkable())
                 {
                     Dlog("Do not pull from links!");
                     return;
@@ -2777,6 +2837,8 @@ namespace IngameScript
                 ProdList.Clear();
                 ((TallyItemSub)Job.Requester).Assemblers[Job.WIxA].AssemblerBlock.GetQueue(ProdList);
                 SearchCount = ProdList.Count;
+
+
             }
 
             void GenerateQueuePortion()
@@ -2785,26 +2847,49 @@ namespace IngameScript
                 FixedPoint = sub.TargetQuota.HasValue ? (MyFixedPoint)(((float)sub.TargetQuota.Value - (float)sub.CurrentTotal) / sub.Assemblers.Count) : 0;
                 FixedPoint = FixedPoint < 0 ? 0 : FixedPoint < 1 && FixedPoint > 0 ? 1 : (int)FixedPoint;
             }
+            public override WorkResult IterateScope(bool forward)
+            {
+                WorkResult result = base.IterateScope(forward);
+                if (SearchIndex == 0//mainResult == WorkResult.NONE_CONTINUE
+                    && FixedPoint.HasValue) // New queue needed
+                {
+                    TallyItemSub sub = (TallyItemSub)Job.Requester;
+                    sub.Assemblers[Job.WIxA].AssemblerBlock.AddQueueItem(Recipe(sub.Type).Value, FixedPoint.Value);
+                    Dlog("Fresh queue added!");
+                }
+                return result;
+            }
 
             public override bool DoWork()
             {
+                Dlog($"Production Work Indices: {SearchIndex}/{SearchCount}");
+
                 switch (Job.WorkType)
                 {
                     case WorkType.PROD:
                         Produce();
-                        return SearchIndex == 0 && FixedPoint.HasValue && FixedPoint.Value > 0; // New queue needed
+                        Dlog($"SearchIndex: {SearchIndex} || FixedPoint: {(FixedPoint.HasValue ? FixedPoint.Value.ToString() : "None")}");
+                        return false; // Keep working!
+                        
+                        //SearchIndex == 0 && !FixedPoint.HasValue; // All Queues checked and targetQueue updated!
+                        //SearchIndex == 0 && FixedPoint.HasValue && FixedPoint.Value > 0; // New queue needed
                 }
                 return false;
             }
 
             void Produce()
             {
+                //Dlog($"")
+                //MyProductionItem item;
+                //item.
+
                 TallyItemSub sub = (TallyItemSub)Job.Requester;
                 if (sub.Type.SubtypeId != ProdList[SearchIndex].BlueprintId.SubtypeName)
                 {
                     Dlog("Not the right recipe, skipping...");
                     return;
                 }
+
                 if (FixedPoint == null)
                 {
                     Dlog("Removing duplicate queue");
@@ -2823,6 +2908,11 @@ namespace IngameScript
                 {
                     Dlog("Shrinking existing queue...");
                     sub.Assemblers[Job.WIxA].AssemblerBlock.RemoveQueueItem(SearchIndex, -correction);
+                    FixedPoint = null;
+                }
+                else
+                {
+                    Dlog("Queue is exact amount...");
                     FixedPoint = null;
                 }
             }
@@ -3092,8 +3182,8 @@ namespace IngameScript
                 base.Run();
 
                 Page working = Program.Displays[WorkIndex].MyPage;
-                if (working != null &&
-                    (working.ReBuild || !Complete))
+                if (working != null)// &&
+                    //(working.ReBuild || !Complete))
                 {
                     working.BuildBody();
                     working.ReBuild = false;
@@ -3203,7 +3293,7 @@ namespace IngameScript
 
                     case WorkResult.NONE_CONTINUE: // Link(s) missing, or slots need fulfilling
 
-                        if (moving.Flow.OUT == 1 /*&& !moving.DumpQueued*/ && !moving.CheckBroken())
+                        if (moving.Flow.OUT == 1 /*&& !moving.DumpQueued*/ && !moving.IsBroken())
                         {
                             Dlog("Adding to dump queue...");
                             Program.Dumper.Queue.Append(moving);
@@ -3275,10 +3365,10 @@ namespace IngameScript
             public ItemBrowser(Program prog, bool active = true) : base(prog, active)
             {
                 TypeFind = new TypeWork(prog.ROOT, this);
-                TypeFind.Job = new JobMeta(JobType.FIND, WorkType.NONE, WorkResult.TYPE_FOUND);
+                TypeFind.Job = new JobMeta(JobType.FIND, WorkType.BROWSE, WorkResult.TYPE_FOUND);
 
                 SubFind = new SubWork(prog.ROOT, this);
-                SubFind.Job = new JobMeta(JobType.FIND, WorkType.NONE, WorkResult.SUB_FOUND);
+                SubFind.Job = new JobMeta(JobType.FIND, WorkType.BROWSE, WorkResult.SUB_FOUND);
                 TypeFind.Chain = SubFind;
 
                 SlotMatch = new SlotWork(prog.ROOT, this);
@@ -3360,7 +3450,7 @@ namespace IngameScript
                 QuotaAssign.Job = new JobMeta(JobType.FIND, WorkType.QUOTE, WorkResult.SUB_FOUND);
 
                 ProducerAssign = new AssemblerWork(prog.ROOT, this);
-                ProducerAssign.Job = new JobMeta(JobType.WORK, WorkType.QUOTE, WorkResult.SUB_FOUND, WorkResult.SUB_FOUND);
+                ProducerAssign.Job = new JobMeta(JobType.WORK, WorkType.QUOTE);
                 QuotaAssign.Chain = ProducerAssign;
 
                 Name = "QUOTAS";
@@ -3374,6 +3464,8 @@ namespace IngameScript
 
             public override void Run()
             {
+                base.Run();
+
                 TallyItemSub sub = Program.AllItemSubs[WorkIndex];
                 QuotaAssign.Job.Requester = sub;
                 sub.Assemblers.Clear();
@@ -3433,7 +3525,7 @@ namespace IngameScript
                 ProdUpdate.Job = new JobMeta(JobType.WORK, WorkType.PROD);
 
                 ProdCheck = new ProductionWork(prog.ROOT, this);
-                ProdCheck.Job = new JobMeta(JobType.WORK, WorkType.PROD, WorkResult.NONE_CONTINUE, WorkResult.NONE_CONTINUE, false);
+                ProdCheck.Job = new JobMeta(JobType.WORK, WorkType.PROD, WorkResult.COMPLETE, WorkResult.NONE_CONTINUE, false);
                 ProdUpdate.Chain = ProdCheck;
             }
 
@@ -3445,6 +3537,8 @@ namespace IngameScript
 
             public override void Run()
             {
+                base.Run();
+
                 TallyItemSub prod = Program.Productions[WorkIndex];
                 ProdUpdate.Job.Requester = prod;
                 ProdUpdate.SetSearchCount();
@@ -3466,11 +3560,12 @@ namespace IngameScript
                         Dlog("OVER-HEAT!");
                         return false;
 
-                    case WorkResult.COMPLETE:
-                        Dlog("Adding new queue!");
-                        prod.Assemblers[ProdUpdate.SearchIndex].AssemblerBlock.AddQueueItem(prod.Type, ProdCheck.FixedPoint.Value);
-                        return true;
+                    //case WorkResult.COMPLETE:
+                        //Dlog("Queue Updated!");
+                        //prod.Assemblers[ProdUpdate.SearchIndex].AssemblerBlock.AddQueueItem(prod.Type, ProdCheck.FixedPoint.Value);
+                        //return true;
 
+                    //case WorkResult.COMPLETE:
                     case WorkResult.NONE_CONTINUE:
                         Dlog("Assemblers Updated!");
                         return true;
@@ -3555,7 +3650,6 @@ namespace IngameScript
             public StringBuilder FooterBuffer = new StringBuilder();
 
             float FontSizeCache;
-            //int BodyCountCache;
 
             int CharCount;
             int LineCount;
@@ -3585,6 +3679,7 @@ namespace IngameScript
                 Delay = DefScrollDelay;
                 Timer = 0;
                 AutoScroll = true;
+                QUOTE = false;
 
                 Meta = new DisplayMeta(DefSigCount);
             }
@@ -3847,7 +3942,7 @@ namespace IngameScript
                     BodySize = LineCount - (HeaderCount + FooterCount);
 
 
-                    Dlog("Body size determined! Count cached!");
+                    Dlog($"Body size determined: {BodySize}");
 
                     for (int b = 0; b < BodySize && BodyCount < BodySize; b++)
                     {
@@ -3862,6 +3957,7 @@ namespace IngameScript
                         {
                             Dlog("Emptyline...");
                             LINE();
+                            BodyCount++;
                         }
 
                     }
@@ -3888,14 +3984,57 @@ namespace IngameScript
                 string amount = null;
                 int remains = 0;
 
-                Dlog($"{meta.Form}-Line...");
+                Dlog($"{meta.Format}-Line...");
 
                 try
                 {
-                    switch (meta.Form)
+                    switch (meta.Format)
                     {
                         case StringFormat.BODY:
-                            LINE(data[0]);
+                            Dlog("Adding paragraph...");
+                            remains = CharCount;
+                            //linecount = 1;
+                            for (int i = 0; i < data.Length; i++)
+                            {
+                                if (data[i] == null)
+                                    continue;
+
+                                if (remains != CharCount && data[i].Length >= remains) // needs a new line
+                                {
+                                    LINE();
+                                    linecount++;
+                                    remains = CharCount;
+                                    Dlog($"NewLine added for data {i}. LineCount: {linecount}");
+                                }
+
+                                if (!data[i].Contains('\n') && data[i].Length >= CharCount) // will only fit on this line by itself (hyphenate later)
+                                {
+                                    LINE($"{data[i]}");
+                                    linecount++;
+                                    Dlog($"data {i} will only fit by itself. LineCount: {linecount}");
+                                    continue;
+                                }
+
+                                if (data[i].Contains('\n')) // Get size of last block
+                                {
+                                    string[] newLines = data[i].Split('\n');
+                                    string lastLine = newLines[newLines.Length - 1];
+                                    linecount += newLines.Length - 1; // Add number of 'splits'
+                                    remains = CharCount - (lastLine.Length + 1); // New lineCount minus last word and one space
+                                    Dlog($"data {i} had {newLines.Length} number of separate words. LineCount: {linecount}");
+                                }
+                                else
+                                    remains -= (data[i].Length + 1); // Remainder of lineCount minus word and one space
+
+
+                                FAP($"{data[i]}"); // Append the next block
+                                if (i < data.Length - 1)
+                                    FAP($" ");
+                            }
+                            LINE(); // End of paragraph
+                            Dlog($"Final line count for paragraph: {linecount}");
+                            //LINE();
+                            //LINE(data[0]);
                             break;
 
                         case StringFormat.WARNING:
@@ -3935,7 +4074,7 @@ namespace IngameScript
                         case StringFormat.SUB_HEADER:
                         case StringFormat.FOOTER:
 
-                            bool foot = meta.Form == StringFormat.FOOTER;
+                            bool foot = meta.Format == StringFormat.FOOTER;
 
                             if (meta.Source != null)
                             {
@@ -4171,14 +4310,16 @@ namespace IngameScript
                             break;
                     }
 
-                    if (meta.Form == StringFormat.FOOTER)
+                    if (meta.Format == StringFormat.FOOTER)
                         FooterCount += linecount;
 
-                    else if (meta.Form == StringFormat.HEADER)
+                    else if (meta.Format == StringFormat.HEADER)
                         HeaderCount += linecount;
 
                     else
                         BodyCount += linecount;
+
+                    Dlog($"Current Body Count: {BodyCount}");
                 }
                 catch
                 {
@@ -4307,7 +4448,7 @@ namespace IngameScript
             {
                 return Profile.CLEAN ? CheckClogged() : true;
             }
-            public virtual bool FillCheck()
+            public virtual bool IsManaged()
             {
                 return true;
             }
@@ -4356,6 +4497,11 @@ namespace IngameScript
                 //ProdBlock.UseConveyorSystem = Profile.ACTIVE_CONVEYOR;
             }
 
+            public override bool IsManaged()
+            {
+                return !Profile.ACTIVE_CONVEYOR;
+            }
+
             public override void Setup()
             {
                 base.Setup();
@@ -4371,6 +4517,11 @@ namespace IngameScript
                 AssemblerBlock = (IMyAssembler)meta.Block;
                 AssemblerBlock.CooperativeMode = false;
             }
+            public override void Setup()
+            {
+                DefaultData(AssemblerDefault);
+                base.Setup();
+            }
         }
         public class Refinery : Producer
         {
@@ -4381,10 +4532,10 @@ namespace IngameScript
                 RefineBlock = (IMyRefinery)meta.Block;
             }
 
-            public override bool FillCheck()
+            /*public override bool FillCheck()
             {
                 return !Profile.ACTIVE_CONVEYOR;
-            }
+            }*/
 
             public override void Setup()
             {
@@ -4449,13 +4600,13 @@ namespace IngameScript
         {
             try
             {
-                if (dest.CheckFull())
+                if (dest.IsFull())
                 {
                     dest.Dlog("Destination Too Full!");
                     return false;
                 }
 
-                if (source.CheckEmpty())
+                if (source.IsEmpty())
                 {
                     source.Dlog("Source Too Empty!");
                     return false;
@@ -4468,6 +4619,13 @@ namespace IngameScript
             catch { return false; }
         }
 
+        static MyDefinitionId? Recipe(MyItemType type)
+        {
+            MyDefinitionId output;
+            if (MyDefinitionId.TryParse("MyObjectBuilder_BlueprintDefinition", type.SubtypeId, out output))
+                return output;
+            return null;
+        }
         static MyFixedPoint? MaximumReturn(MyFixedPoint? IN, MyFixedPoint? OUT)
         {
             return !IN.HasValue ? OUT : !OUT.HasValue ? IN : IN < OUT ? IN : OUT;
@@ -4480,7 +4638,7 @@ namespace IngameScript
         {
             moving.Dlog($"Destination Target: {(destTarget.HasValue ? destTarget.Value.ToString() : "all")}");
 
-            MyFixedPoint? allow = moving.Flow.KEEP.HasValue ? moving.SnapShot.Amount - moving.Flow.KEEP.Value : moving.CheckLinkable() ? (MyFixedPoint?)(moving.SnapShot.Amount - 1) : null/*moving.SnapShot.Amount*/;
+            MyFixedPoint? allow = moving.Flow.KEEP.HasValue ? moving.CurrentAmount() - moving.Flow.KEEP.Value : moving.IsLinkable() ? (MyFixedPoint?)(moving.CurrentAmount() - 1) : null/*moving.SnapShot.Amount*/;
             moving.Dlog($"Allowed to move out: {allow}");
 
             MyFixedPoint? output = MaximumReturn(destTarget, allow);
@@ -4580,7 +4738,6 @@ namespace IngameScript
 
             return allow;
         }
-
         static bool FilterCompare(Filter A, string typeB, string subB)
         {
             A.Dlog("Filter Compare");
@@ -4607,8 +4764,15 @@ namespace IngameScript
         }
         static bool Contains(string source, string target)
         {
+            if (source == null)
+                return false;
+
             if (target == null)
                 return true;
+
+            //source = source.ToUpper();
+            //target = target.ToUpper();
+            //return source.IndexOf(target) > -1;
 
             return source.IndexOf(target, StringComparison.OrdinalIgnoreCase) > -1;
         }
@@ -4634,16 +4798,23 @@ namespace IngameScript
         {
             return input.Flow.IN > -1 && output.Flow.OUT > -1;
         }
-        static bool TypeCompare(Slot slot, MyItemType? type)
+        static bool TypeCompare(MyItemType? type, Slot slot)
         {
-            slot.Dlog("Type Compare!");
+            slot.Dlog("KeenType Compare!");
             return slot != null && type.HasValue && slot.SnapShot.Type == type.Value;
+        }
+        static bool TypeCompare(Compare compare, Slot slot)
+        {
+            slot.Dlog("TorqkType Compare!");
+
+            return slot.CheckSlot() && FullCompare(compare.type, compare.sub, slot.SnapShot.Type.TypeId, slot.SnapShot.Type.SubtypeId, slot);
         }
         static bool TypeCompare(Compare compare, MyItemType type, Root dbug)
         {
-            dbug.Dlog("Type Compare!");
+            dbug.Dlog("Torqk-Keen Compare!");
             return FullCompare(compare.type, compare.sub, type.TypeId, type.SubtypeId, dbug);
         }
+
         static bool RawCompare(MyItemType type, string raw, out MyFixedPoint? quote, Root dbug)
         {
             dbug.Dlog("Raw Compare!");
@@ -5034,151 +5205,6 @@ namespace IngameScript
         #endregion
 
         #region Run Arguments
-        void AdjustSpeed(bool up = true)
-        {
-            if ((byte)RUN_FREQ > 0)
-            {
-                if (!up && (byte)RUN_FREQ < 4)
-                    RUN_FREQ = (UpdateFrequency)((byte)RUN_FREQ << 1);
-
-                if (up && (byte)RUN_FREQ > 1)
-                    RUN_FREQ = (UpdateFrequency)((byte)RUN_FREQ >> 1);
-
-                if (!up && RUN_FREQ == UpdateFrequency.Update100)
-                    RUN_FREQ = UpdateFrequency.None;
-            }
-
-            if (up && RUN_FREQ == UpdateFrequency.None)
-                RUN_FREQ = UpdateFrequency.Update100;
-
-            Runtime.UpdateFrequency = RUN_FREQ;
-        }
-        void AdjustVolume(bool up = true)
-        {
-            OP_CAP += up ? 1 : -1;
-            OP_CAP = OP_CAP < OP_CAP_MIN ? OP_CAP_MIN : OP_CAP > OP_CAP_MAX ? OP_CAP_MAX : OP_CAP;
-        }
-
-        void ClearQue()
-        {
-            foreach (Assembler producer in Assemblers)
-            {
-                Echo("Clearing...");
-                if (producer.AssemblerBlock != null)
-                    producer.AssemblerBlock.ClearQueue();
-                Echo("Cleared!");
-            }
-        }
-        void ReTagBlocks()
-        {
-            List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
-            if (!PullTerminalBlocksFromSignedGroup(blocks, DetectedGroups))
-                return;
-
-            foreach (IMyTerminalBlock block in blocks)
-                ReTagBlock(block);
-        }
-        void ReTagBlock(IMyTerminalBlock block)
-        {
-            if (!block.CustomName.Contains(Signature))
-                block.CustomName += Signature;
-        }
-        void ReNameBlocks(string name)
-        {
-            List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
-            if (!PullTerminalBlocksFromSignedGroup(blocks, DetectedGroups))
-                return;
-
-            for (int i = 0; i < blocks.Count; i++)
-            {
-                //string lead = numbered ? $"{i}" : "";
-                blocks[i].CustomName = $"{name} - {i}{Signature}";
-            }
-        }
-
-        void ScrollScreen(string name, int direction, int amount = 1)
-        {
-            Display target = Displays.Find(x => x.MyName().Contains(name));
-            if (target == null)
-                return;
-
-            target.Scroll(direction, amount);
-        }
-
-        void ToggleOp(string op)
-        {
-            switch (op)
-            {
-                case "TALLY":
-                    Scanner.Toggle();
-                    Sorter.Toggle();
-                    break;
-
-                case "MOVE":
-                    Mover.Toggle();
-                    Browser.Toggle();
-                    Dumper.Toggle();
-                    break;
-
-                case "DISPLAY":
-                    Writer.Toggle();
-                    break;
-
-                case "PRODUCE":
-                    Quoting.Toggle();
-                    Producing.Toggle();
-                    break;
-
-                //case "CLEAN":
-                //Cleaner.Toggle();
-                //break;
-
-                case "POWER":
-                    Powering.Toggle();
-                    break;
-            }
-        }
-        void ReFilterBlocks()
-        {
-            List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
-            if (!PullTerminalBlocksFromSignedGroup(blocks, DetectedGroups))
-                return;
-
-            string masterCustomData = string.Empty;
-
-            foreach (IMyTerminalBlock block in blocks)
-                if (block.CustomData.Contains(CustomSig))
-                {
-                    masterCustomData = block.CustomData.Replace(CustomSig, "");
-                    break;
-                }
-
-            foreach (IMyTerminalBlock block in blocks)
-                block.CustomData = masterCustomData;
-        }
-        void ClearAllBlockTags()
-        {
-            List<IMyTerminalBlock> allBlocks = new List<IMyTerminalBlock>();
-            GridTerminalSystem.GetBlocks(allBlocks);
-
-            foreach (IMyTerminalBlock block in allBlocks)
-                if (block.CustomName.Contains(Signature))
-                    block.CustomName = block.CustomName.Replace(Signature, string.Empty);
-        }
-
-        #endregion
-
-        #region RUNTIME
-        void Debugging()
-        {
-            Debug.Append($"CallCount: {OP_COUNT}");
-            mySurface.WriteText(Debug);
-            Debug.Clear();
-        }
-        void Fail()
-        {
-            Debug.Append("FAIL-POINT!\n");
-        }
         void RunArguments(string argument)
         {
             if (argument == string.Empty ||
@@ -5216,21 +5242,25 @@ namespace IngameScript
                     BREAK = false;
                     break;
 
+                case "QUOTE":
+                    Productions.Clear();
+                    Quoting.Complete = false;
+                    break;
+
                 case "RETAG":
                     ReTagBlocks();
                     break;
 
-                case "REFILTER":
-                    ReFilterBlocks();
+                case "CLONEDATA":
+                    CloneBlocksCustomData();
                     break;
 
                 case "CLEARTAGS":
                     ClearAllBlockTags();
                     break;
 
-                case "QUOTE":
-                    Productions.Clear();
-                    Quoting.Complete = false;
+                case "CLEARDATA":
+                    ClearData();
                     break;
 
                 case "CLEARQUE":
@@ -5293,6 +5323,160 @@ namespace IngameScript
 
             }
         }
+        void AdjustSpeed(bool up = true)
+        {
+            if ((byte)RUN_FREQ > 0)
+            {
+                if (!up && (byte)RUN_FREQ < 4)
+                    RUN_FREQ = (UpdateFrequency)((byte)RUN_FREQ << 1);
+
+                if (up && (byte)RUN_FREQ > 1)
+                    RUN_FREQ = (UpdateFrequency)((byte)RUN_FREQ >> 1);
+
+                if (!up && RUN_FREQ == UpdateFrequency.Update100)
+                    RUN_FREQ = UpdateFrequency.None;
+            }
+
+            if (up && RUN_FREQ == UpdateFrequency.None)
+                RUN_FREQ = UpdateFrequency.Update100;
+
+            Runtime.UpdateFrequency = RUN_FREQ;
+        }
+        void AdjustVolume(bool up = true)
+        {
+            OP_CAP += up ? 1 : -1;
+            OP_CAP = OP_CAP < OP_CAP_MIN ? OP_CAP_MIN : OP_CAP > OP_CAP_MAX ? OP_CAP_MAX : OP_CAP;
+        }
+
+        void ClearData()
+        {
+            foreach (block block in Blocks)
+            {
+                if (block.TermBlock != null)
+                    block.TermBlock.CustomData = string.Empty;
+            }
+        }
+        void ClearQue()
+        {
+            foreach (Assembler producer in Assemblers)
+            {
+                if (producer.AssemblerBlock != null)
+                    producer.AssemblerBlock.ClearQueue();
+            }
+        }
+        void ClearAllBlockTags()
+        {
+            List<IMyTerminalBlock> allBlocks = new List<IMyTerminalBlock>();
+            GridTerminalSystem.GetBlocks(allBlocks);
+
+            foreach (IMyTerminalBlock block in allBlocks)
+                if (block.CustomName.Contains(Signature))
+                    block.CustomName = block.CustomName.Replace(Signature, string.Empty);
+        }
+
+        void ReTagBlocks()
+        {
+            List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
+            if (!PullTerminalBlocksFromSignedGroup(blocks, DetectedGroups))
+                return;
+
+            foreach (IMyTerminalBlock block in blocks)
+                ReTagBlock(block);
+        }
+        void ReTagBlock(IMyTerminalBlock block)
+        {
+            if (!block.CustomName.Contains(Signature))
+                block.CustomName += Signature;
+        }
+        void ReNameBlocks(string name)
+        {
+            List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
+            if (!PullTerminalBlocksFromSignedGroup(blocks, DetectedGroups))
+                return;
+
+            for (int i = 0; i < blocks.Count; i++)
+            {
+                //string lead = numbered ? $"{i}" : "";
+                blocks[i].CustomName = $"{name} - {i}{Signature}";
+            }
+        }
+        void CloneBlocksCustomData()
+        {
+            List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
+            if (!PullTerminalBlocksFromSignedGroup(blocks, DetectedGroups))
+                return;
+
+            string masterCustomData = string.Empty;
+
+            foreach (IMyTerminalBlock block in blocks)
+                if (block.CustomData.Contains(CustomSig))
+                {
+                    masterCustomData = block.CustomData.Replace(CustomSig, "");
+                    break;
+                }
+
+            foreach (IMyTerminalBlock block in blocks)
+                block.CustomData = masterCustomData;
+        }
+
+        void ScrollScreen(string name, int direction, int amount = 1)
+        {
+            Display target = Displays.Find(x => x.MyName().Contains(name));
+            if (target == null)
+                return;
+
+            target.Scroll(direction, amount);
+        }
+        void ToggleOp(string op)
+        {
+            switch (op)
+            {
+                case "TALLY":
+                    Scanner.Toggle();
+                    Sorter.Toggle();
+                    break;
+
+                case "MOVE":
+                    Mover.Toggle();
+                    Browser.Toggle();
+                    Dumper.Toggle();
+                    break;
+
+                case "DISPLAY":
+                    Writer.Toggle();
+                    break;
+
+                case "PRODUCE":
+                    Quoting.Toggle();
+                    Producing.Toggle();
+                    break;
+
+                //case "CLEAN":
+                //Cleaner.Toggle();
+                //break;
+
+                case "POWER":
+                    Powering.Toggle();
+                    break;
+            }
+        }
+        
+        
+
+        #endregion
+
+        #region RUNTIME
+        void Debugging()
+        {
+            Debug.Append($"CallCount: {OP_COUNT}");
+            mySurface.WriteText(Debug);
+            Debug.Clear();
+        }
+        void Fail()
+        {
+            Debug.Append("FAIL-POINT!\n");
+        }
+        
         void SynchronizedUpdates()
         {
             if (Writer.HasWork())
@@ -5403,6 +5587,13 @@ namespace IngameScript
                     RunOperations();
                 }
                 catch { Fail(); }
+            }
+
+            if (!ONE_TIME && Scanner.Complete && !Sorter.HasWork() && !Quoting.HasWork())
+            {
+                ONE_TIME = true;
+                RUN_FREQ = UpdateFrequency.None;
+                Runtime.UpdateFrequency = RUN_FREQ;
             }
 
             ProgEcho();
