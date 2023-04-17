@@ -381,6 +381,7 @@ namespace IngameScript
         static readonly string AssemblerDefault =
             "! -in +out\n" +
             $"ingot/ +in -out #{PROD_BUFFER}/\n" +
+            $"comp/tech +in -out #100/\n" +
             "&fill\n" +
             "&empty\n" +
             "&conveyor-";
@@ -402,10 +403,10 @@ namespace IngameScript
         bool BREAK;
 
         bool FLIM_FLAM;
-        bool ONE_TIME;
+        bool ONE_TIME = true;
 
         const string LEGACY_TYPE_PREFIX = "MyObjectBuilder_";
-        const string Seperator = "/";
+        //const string Seperator = "/";
         const char Split = '/';
         const char Bar = '=';
         const char A = '<';
@@ -424,7 +425,6 @@ namespace IngameScript
         static int[] MONO_RATIO = { 20, 30 };
 
         string[] InputBuffer;
-        StringBuilder BreakBuilder = new StringBuilder();
         StringBuilder BugBuilder = new StringBuilder();
         StringBuilder Debug = new StringBuilder();
         StringBuilder EchoBuilder = new StringBuilder();
@@ -765,8 +765,6 @@ namespace IngameScript
 
             public void Append(R root)
             {
-                Dlog($"{root} Indices Before Append:\n{RootIndices(root)}");
-
                 int listIndex = root.ListIndices[(int)Type];
 
                 if (listIndex > -1 && listIndex < Count)
@@ -781,47 +779,34 @@ namespace IngameScript
 
                 ResetPages();
 
-                Dlog($"Added {root} to list of type {Type} (Count:{Count})");
-                Dlog($"{root} Indices After Append:\n{RootIndices(root)}");
+
             }
 
             public bool Remove(int index)
             {
                 if (index < 0 || index >= Count)
                 {
-                    Dlog($"Indice out of range, doesn't exist in list?");
                     return false;
                 }
-                Dlog($"{this[index]} Indices Before Remove:\n{RootIndices(index)}");
 
                 Root removing = this[index]; // reference what we are removing
-                //this[index].ListIndices[(int)Type] = -1; // Cleanse whats being removed
                 this[index] = this[Count - 1]; // Overwrite with end of list
                 this[index].ListIndices[(int)Type] = index; // Re-index replacement
                 RemoveAt(Count - 1); // Remove copy of replacement
                 removing.ListIndices[(int)Type] = -1; // cleanse what was removed
 
-                Dlog($"Removed {index} indice from list of type {Type}\n" +
-                    $"Replaced with index {Count} ");
 
                 foreach (Work work in Works)
                     work.Reset();
 
                 ResetPages();
 
-                Dlog($"{removing} Indices After Remove:\n{RootIndices(removing)}");
-
                 return true;
             }
             new public void Remove(R root)
             {
-                //root.Dlog($"Removing {root} from list (Index:{root.ListIndices[(int)Type]})");
                 int listIndex = root.ListIndices[(int)Type];
-                if (Remove(listIndex))
-                {
-                    //root.ListIndices[(int)Type] = -1;
-                    Dlog($"Removed {root} from list of type {Type} (Count:{Count})");
-                }
+                Remove(listIndex);
             }
 
             string RootIndices(Root root)
@@ -1174,7 +1159,6 @@ namespace IngameScript
 
             public void AppendLineSource(StringFormat format, Root root)
             {
-                Dlog($"Line source made for {root.MyName()}");
                 AppendMeta(new StringMeta(format, root));
             }
 
@@ -1480,9 +1464,6 @@ namespace IngameScript
             {
                 Body.Clear();
 
-                //Dlog($"TypeCount: {Program.AllItemTypes.Count}\n" +
-                //    $"SubCount: {Program.AllItemSubs.Count}");
-
                 MyFixedPoint? blah;
                 foreach (TallyItemType type in Program.AllItemTypes)
                 {
@@ -1546,9 +1527,6 @@ namespace IngameScript
             }
             void SlotFilter()
             {
-                //ItemIndex = itemIndex;
-
-                Dlog("Filtering Slot...");
 
                 if (Inventory == null)
                     return;
@@ -1557,40 +1535,29 @@ namespace IngameScript
 
                 bool inAllowed = ProfileCompare(Inventory.Profile, SnapShot.Type, out inTarget);
                 bool outAllowed = ProfileCompare(Inventory.Profile, SnapShot.Type, out outTarget, false);
-                //bool wasPushing = Flow.IsMoving();
-                //bool wasPumping = CheckLinkable();
 
                 Flow = new Flow(inTarget, outTarget,
                     inAllowed ? (Inventory.Profile.FILL ? 1 : 0) : -1,
                     outAllowed ? (Inventory.Profile.EMPTY ? 1 : 0) : -1);
 
-                Dlog("Flow generated!");
 
-                //Filter = new Filter(Program.ROOT, SnapShot.Type, flow); ;
-
-                if (/*!wasPushing && */Flow.IsMoving())
+                if (Flow.IsMoving())
                 {
-                    Dlog("Moving");
                     Program.MoveRequests.Append(this);
                 }
 
                 else
                 {
-                    //if (wasPushing && !Flow.IsMoving())
-                    Dlog("Not Moving");
                     Program.MoveRequests.Remove(this);
                 }
 
 
-                Dlog("Move requests updated!");
 
-                if (/*!wasPumping && */IsLinkable() && Flow.IsMoving())
+                if (IsLinkable() && Flow.IsMoving())
                     Program.PumpRequests.Append(this);
                 else
-                    //if (wasPumping && !CheckLinkable())
                     Program.PumpRequests.Remove(this);
 
-                Dlog("Pump requests updated!");
             }
 
             public override string MyName()
@@ -1636,21 +1603,19 @@ namespace IngameScript
                 {
                     if (InLink == null)
                     {
-                        Dlog("No Inlink!");
+
                     }
                     else if (!InLink.Refresh())
                     {
-                        Dlog("Bad Inlink!");
                         InLink = null;
                     }
                     else if (!TallyTransfer(InLink, this))
                     {
-                        Dlog("Pump-in fail!");
-                        //InLink = null; // Special logic for breaking? maybe a fail count?
+
                     }
                     else
                     {
-                        Dlog("Pump-in success!");
+
                     }
                 }
 
@@ -1658,21 +1623,19 @@ namespace IngameScript
                 {
                     if (OutLink == null)
                     {
-                        Dlog("No Outlink!");
+
                     }
                     else if (!OutLink.Refresh())
                     {
-                        Dlog("Bad Outlink!");
                         OutLink = null;
                     }
                     else if (!TallyTransfer(this, OutLink))
                     {
-                        Dlog("Pump-out fail!");
-                        //OutLink = null;
+
                     }
                     else
                     {
-                        Dlog("Pump-out success!");
+
                     }
                 }
             }
@@ -1681,18 +1644,20 @@ namespace IngameScript
                 MyInventoryItem? check;
                 delta = SnapShot.Amount;
 
-                if (!CheckSlot(out check))
-                    return false;
+                bool checkResult = CheckSlot(out check);
 
-                delta = check.Value.Amount - SnapShot.Amount;
-                SnapShot = check.Value; // OverWrite
-                return true;
+                if (checkResult)
+                    delta = check.Value.Amount - SnapShot.Amount;
+                else
+                    delta = -SnapShot.Amount;
+                if(check.HasValue)
+                    SnapShot = check.Value; // OverWrite
+
+                return checkResult;
             }
 
             public MyInventoryItem? PullItem()
             {
-                Dlog("Pulling item...");
-                Dlog($"Container null: {Container == null}");
                 return Container == null ? null : Container.GetItemAt(ItemIndex);
             }
             public bool CheckSlot()
@@ -1702,10 +1667,7 @@ namespace IngameScript
             }
             public bool CheckSlot(out MyInventoryItem? check)
             {
-                Dlog("Checking slot...");
                 check = PullItem();
-                Dlog(check.HasValue.ToString());
-                Dlog($"{InventoryName()} is null: {!check.HasValue}");
                 return check.HasValue && check.Value.Type == SnapShot.Type;
             }
 
@@ -1713,17 +1675,15 @@ namespace IngameScript
             {
                 MyInventoryItem? check;
                 bool result = CheckSlot(out check);
-                //SnapShot = result ? check.Value : SnapShot; // leave old Snapshot if slot broken
-                Dlog($"Slot {InventoryName()} is {(result ? "Still Good!" : "Broken!")}");
                 return result;
             }
-            public bool HasOverride()
+            /*public bool HasOverride()
             {
                 return Inventory is Producer && Flow.IN == 1;
-            }
+            }*/
             public bool IsLinkable()
             {
-                return (Inventory is Producer && Inventory.IsManaged()) || IsStockpile();
+                return (Inventory is Producer && Inventory.IsManaged());// || IsStockpile();
             }
             public bool IsStockpile()
             {
@@ -1733,17 +1693,15 @@ namespace IngameScript
             {
                 if (Flow.IN == 1 && InLink == null)
                 {
-                    Dlog("Inbound Unlinked!");
+
                     return false;
                 }
 
                 if (Flow.OUT == 1 && OutLink == null)
                 {
-                    Dlog("Outbound Unlinked!");
                     return false;
                 }
 
-                Dlog("Fully Linked!");
                 return true;
             }
             public bool IsSorted()
@@ -1892,7 +1850,6 @@ namespace IngameScript
 
             public bool Setup(string customData)
             {
-                Dlog("Profile Setup...");
 
                 Filters.Clear();
                 DEFAULT_IN = true;
@@ -1930,10 +1887,8 @@ namespace IngameScript
                                 CLEAN = !nextline.Contains("-");
 
                             if (Contains(nextline, "convey"))
-                            {
                                 ACTIVE_CONVEYOR = !nextline.Contains("-");
-                                Dlog($"Active conveyance: {ACTIVE_CONVEYOR}");
-                            }
+                            
 
 
                             continue;
@@ -1946,8 +1901,6 @@ namespace IngameScript
                 catch { Dlog("Profile Build Error!"); }
 
                 Filters.RemoveAll(x => x.Compare.type == "any" && x.Compare.sub == "any");  // Redundant. Refer to inventory default mode
-
-                Dlog("Filters Complete!");
 
                 return true;
             }
@@ -2096,8 +2049,6 @@ namespace IngameScript
 
             public void SetQuota(MyFixedPoint? quote = null)
             {
-                Dlog($"Quote: {(quote.HasValue ? $"{quote.Value}" : "None")}");
-                //Program.AllItemTypes[ListIndices[(int)RootListType.TYPE_ALL]]
                 TargetQuota = quote;
             }
             public override MyFixedPoint? MyQuota()
@@ -2106,11 +2057,9 @@ namespace IngameScript
             }
             public void Update(MyFixedPoint change)
             {
-                Dlog($"{SubType()} = CurrentTotal is {CurrentTotal}, and is changing by {change}");
                 CurrentTotal += change;
                 CurrentTotal = CurrentTotal > 0 ? CurrentTotal : 0;
                 HighestReached = CurrentTotal > HighestReached ? CurrentTotal : HighestReached;
-                Dlog($"{SubType()} = NewTotal is {CurrentTotal}");
             }
             public void Append(Slot newTally)
             {
@@ -2144,8 +2093,6 @@ namespace IngameScript
             }
             public WorkResult WorkLoad()
             {
-                Dlog($"Performing: {Name} {Job.JobType}");
-
                 MyOp.CurrentWork = this;
 
                 return IterateScope(Job.Forward);
@@ -2179,24 +2126,22 @@ namespace IngameScript
             {
 
                 WorkResult myResult = WorkResult.NONE_CONTINUE;
-                //for (int i = SearchIndex; forward ? i < SearchCount : i > -1; forward ? i + 1: i - 1)
-                //for (int i = forward ? SearchIndex : SearchCount > 0 ? SearchCount - (SearchIndex + 1) : 0 ; i < SearchCount; i++)
+
                 for (int i = IterationIndex; i < SearchCount; i++)
                 {
                     IterationIndex = i;
                     SearchIndex = forward ? i : SearchCount - (i + 1);
-                    Dlog($"forward: {forward} / IterationIndex: {IterationIndex} / SearchIndex: {SearchIndex} / SearchCount: {SearchCount}");
                     myResult = IterateProc();
 
                     if (myResult == WorkResult.OVERHEAT)
                     {
-                        Dlog("OverHeat!");
+                        Dlog("PAUSED AT:\n" +
+                            $"Iteration:{IterationIndex} / Search:{SearchIndex} / Count:{SearchCount}");
                         return myResult;
                     }
 
                     if (Job.JobType == JobType.FIND && myResult > 0)
                     {
-                        Dlog("Found Something!");
                         if (Chain != null)
                         {
                             WorkResult chainResult = ChainCall();
@@ -2216,8 +2161,6 @@ namespace IngameScript
                     if (Job.JobType == JobType.EXISTS && myResult > 0)
                     {
                         IterationIndex = 0;
-                        //SearchIndex = 0; // May fall back into search
-                        Dlog("Found Existing!");
                         return myResult;
                     }
 
@@ -2234,16 +2177,13 @@ namespace IngameScript
                 if (Job.JobType == JobType.EXISTS && Chain != null)
                 {
                     IterationIndex = 0;
-                    //SearchIndex = 0; // May fall back into search
                     return ChainCall();
                 }
 
-                Dlog($"{MyOp.Name} Result: {myResult}");
                 return myResult;
             }
             WorkResult IterateProc()
             {
-                Dlog("Iteration...");
 
                 if (CheckOp())
                     return WorkResult.OVERHEAT;
@@ -2251,15 +2191,12 @@ namespace IngameScript
                 switch (Job.JobType)
                 {
                     case JobType.FIND:
-                        Dlog("Finding...");
                         return Compare() ? Job.Success : Job.Fail;
 
                     case JobType.EXISTS:
-                        Dlog("Looking for existing...");
                         return Compare() ? Job.Success : Job.Fail;
 
                     case JobType.WORK:
-                        Dlog("Doing work...");
                         return DoWork() ? Job.Success : Job.Fail;
 
                     default:
@@ -2269,7 +2206,6 @@ namespace IngameScript
             bool CheckOp()
             {
                 bool maxed = Program.CallCounter();
-                Dlog($"Calls Maxed: {maxed}");
                 return maxed;
             }
         }
@@ -2294,7 +2230,6 @@ namespace IngameScript
 
                 if (InventoryList == null)
                 {
-                    Dlog("Null InventoryList!");
                     SearchCount = 0;
                     return;
                 }
@@ -2303,8 +2238,6 @@ namespace IngameScript
             }
             public override bool Compare()
             {
-                Dlog($"Checking inventory: {InventoryList[SearchIndex].MyName()}");
-
                 return Job.Requester is Slot && ProfileCompare(InventoryList[SearchIndex], (Slot)Job.Requester, out FixedPoint);
             }
 
@@ -2326,10 +2259,6 @@ namespace IngameScript
                     SearchCount = ((Inventory)Job.Requester).Owner.InventoryCount;
                 else
                 {
-                    if (Job.Requester != null)
-                        Dlog($"{((block)Job.Requester).MyName()}: Not Inventory!");
-                    else
-                        Dlog("Job Requester null!");
                     SearchCount = 0;
                 }
 
@@ -2369,7 +2298,6 @@ namespace IngameScript
 
                     case WorkType.PROD:
                         AssemblerList = ((TallyItemSub)Job.Requester).Assemblers;
-                        Dlog($"Producing {((TallyItemSub)Job.Requester).MyName()} from {AssemblerList.Count} assemblers...");
                         break;
                 }
 
@@ -2396,13 +2324,10 @@ namespace IngameScript
                 {
                     case WorkType.QUOTE:
 
-                        
                         Assembler candidate = Current();
-                        Dlog($"Checking assembler {candidate.MyName()} ({SearchIndex}/{SearchCount})");
                         if (candidate != null && CanAssemble())
                         {
                             ((TallyItemSub)Job.Requester).Assemblers.Add/*Append*/(candidate);
-                            Dlog($"Assembler added to eligable list: {candidate.MyName()}/{((TallyItemSub)Job.Requester).MyName()}");
                         }
                             
                         return false; // keep working
@@ -2419,8 +2344,6 @@ namespace IngameScript
             {
                 IMyAssembler assembler = Program.Assemblers[SearchIndex].AssemblerBlock;
                 MyDefinitionId? recipe = Recipe(((TallyItemSub)Job.Requester).Type);
-                Dlog($"Type: {((TallyItemSub)Job.Requester).Type}\n" +
-                    $"Recipe: {(recipe.HasValue ? recipe.Value.ToString() : "None")}");
                 return recipe.HasValue && assembler.CanUseBlueprint(recipe.Value);
             }
         }
@@ -2501,7 +2424,6 @@ namespace IngameScript
             public override bool Compare()
             {
                 TallyItemSub sub = SubList[SearchIndex];
-                Dlog($"Comparing sub: {(Job.Compare.HasValue ? Job.Compare.Value.sub : "NO COMPARE")} || {sub.Type.SubtypeId}");
 
                 return
                     (Job.Requester is Inventory && ProfileCompare(((Inventory)Job.Requester).Profile, out FixedPoint, sub.Type.SubtypeId, true))
@@ -2587,14 +2509,12 @@ namespace IngameScript
                 if (inv != null)
                 {
                     SearchCount = SlotList.Count > inv.ItemCount ? SlotList.Count : inv.ItemCount;
-                    Dlog($"Slot SearchCount = inventoryCount:{inv.ItemCount}/slotCount:{SlotList.Count}");
                 }
 
 
                 else
                     SearchCount = SlotList.Count;
 
-                Dlog($"SearchIndex/Count: {SearchIndex}/{SearchCount}");
             }
             public override bool Compare()
             {
@@ -2648,8 +2568,6 @@ namespace IngameScript
                 Chain.Job.WIxA = Job.WIxA;
                 Chain.Job.WIxB = Job.WIxB; // Unique operation chain, may need re-factoring
                 Chain.SetSearchCount();
-
-                Dlog("SlotWork ChainCall to SlotWork");
 
                 return Chain.WorkLoad();
             }
@@ -2724,26 +2642,29 @@ namespace IngameScript
                 Slot queued = (Slot)Job.Requester;
                 Slot match = Current();
 
-                Dlog($"Filter queued|match IN/OUT: {queued.Flow.IN}/{queued.Flow.OUT}|{match.Flow.IN}/{match.Flow.OUT}\n" +
-                    $"Links IN/OUT: {(queued.InLink == null ? "None" : $"{queued.InLink.InventoryName()}")}/{(queued.OutLink == null ? "None" : $"{queued.OutLink.InventoryName()}")}");
 
-                if (match.IsLinkable())
+                if (!match.IsStockpile())
                 {
-                    Dlog("Do not link producers together!");
                     return;
                 }
 
                 if (!Compare())
                 {
-                    Dlog("Bad compare!");
+                    return;
+                }
+
+
+                if (queued.Inventory is Producer &&
+                    match.Inventory is Producer)
+                {
                     return;
                 }
 
                 if (queued.Flow.IN == 1 &&
-                    queued.InLink == null &&
+                    queued.InLink == null)
                     //!match.CheckLinkable() &&
-                    (queued.HasOverride() ||
-                    match.Flow.OUT > -1))
+                    //(queued.HasOverride() ||
+                    //match.Flow.OUT > -1))
                 {
                     Dlog($"In Link Made!");
 
@@ -2752,10 +2673,10 @@ namespace IngameScript
                 }
 
                 if (queued.Flow.OUT == 1 &&
-                    queued.OutLink == null &&
+                    queued.OutLink == null)//&&
                     //!match.CheckLinkable() &&
-                    match.Flow.IN > -1 &&
-                    !match.IsLinkable())
+                   // match.Flow.IN > -1 &&
+                    //!match.IsLinkable())
                 {
                     Dlog($"Out Link Made!");
 
@@ -2770,7 +2691,6 @@ namespace IngameScript
 
                 if (candidate.IsLinkable())
                 {
-                    Dlog("Do not pull from links!");
                     return;
                 }
 
@@ -2847,11 +2767,11 @@ namespace IngameScript
             {
                 WorkResult result = base.IterateScope(forward);
                 if (SearchIndex == 0//mainResult == WorkResult.NONE_CONTINUE
-                    && FixedPoint.HasValue) // New queue needed
+                    && FixedPoint.HasValue
+                    && FixedPoint.Value >= 1) // New queue needed
                 {
                     TallyItemSub sub = (TallyItemSub)Job.Requester;
                     sub.Assemblers[Job.WIxA].AssemblerBlock.AddQueueItem(Recipe(sub.Type).Value, FixedPoint.Value);
-                    Dlog("Fresh queue added!");
                 }
                 return result;
             }
@@ -2875,20 +2795,14 @@ namespace IngameScript
 
             void Produce()
             {
-                //Dlog($"")
-                //MyProductionItem item;
-                //item.
-
                 TallyItemSub sub = (TallyItemSub)Job.Requester;
                 if (sub.Type.SubtypeId != ProdList[SearchIndex].BlueprintId.SubtypeName)
                 {
-                    Dlog("Not the right recipe, skipping...");
                     return;
                 }
 
                 if (FixedPoint == null)
                 {
-                    Dlog("Removing duplicate queue");
                     sub.Assemblers[Job.WIxA].AssemblerBlock.RemoveQueueItem(SearchIndex, ProdList[SearchIndex].Amount);
                     return;
                 }
@@ -2896,19 +2810,16 @@ namespace IngameScript
                 MyFixedPoint correction = FixedPoint.Value - ProdList[SearchIndex].Amount; // first recipe found
                 if (correction > 0)
                 {
-                    Dlog("Adding to queue...");
                     sub.Assemblers[Job.WIxA].AssemblerBlock.InsertQueueItem(SearchIndex, ProdList[SearchIndex].BlueprintId, correction);
                     FixedPoint = null;
                 }
                 else if (correction < 0)
                 {
-                    Dlog("Shrinking existing queue...");
                     sub.Assemblers[Job.WIxA].AssemblerBlock.RemoveQueueItem(SearchIndex, -correction);
                     FixedPoint = null;
                 }
                 else
                 {
-                    Dlog("Queue is exact amount...");
                     FixedPoint = null;
                 }
             }
@@ -2916,7 +2827,6 @@ namespace IngameScript
         public class StringWork : Work
         {
             public string[] PageBuffer;
-            //public string[] LineBuffer;
 
             public StringWork(RootMeta meta, Op op) : base(meta, op)
             {
@@ -2952,8 +2862,6 @@ namespace IngameScript
                 if (Chain.Job.WorkType == WorkType.QUOTE && Chain.Job.Requester is TallyItemSub)
                 {
                     Program.Productions.Append((TallyItemSub)Chain.Job.Requester);
-                    //((TallyItemSub)Chain.Job.Requester).Assemblers.Clear();
-                    //Chain.FixedPoint = 0; // Accumulator for assemblers
                 }
 
                 Chain.SetSearchCount();
@@ -3037,7 +2945,6 @@ namespace IngameScript
             public override void Run()
             {
                 base.Run();
-                Dlog($"Sorts Remaining: {WorkCount}");
 
                 TypeMatch.Job.SlotCompare(Queue[0]);
                 TypeMatch.SetSearchCount();
@@ -3050,7 +2957,6 @@ namespace IngameScript
             }
             bool Sort()
             {
-                Dlog($"Processing top of sort queue: {Queue[0].SnapShot.Type}");
                 TallyItemType newType;
                 TallyItemSub newSubType;
 
@@ -3233,12 +3139,11 @@ namespace IngameScript
                 switch (ContainerScope.WorkLoad())
                 {
                     case WorkResult.OVERHEAT:
-                        Dlog("OVER-HEAT!");
+                        //Dlog("OVER-HEAT!");
                         return false;
 
                     case WorkResult.COMPLETE:
-                        //case 1:
-                        Dlog("Scan Complete!");
+                        //Dlog("Scan Complete!");
                         return true;
 
                     default:
@@ -3279,7 +3184,7 @@ namespace IngameScript
             bool Match()
             {
                 Slot moving = Program.MoveRequests[WorkIndex];
-                Dlog($"Matcher TallySlot: {moving.SnapShot.Type}");
+
 
                 switch (SlotLink.WorkLoad())
                 {
@@ -3289,9 +3194,8 @@ namespace IngameScript
 
                     case WorkResult.NONE_CONTINUE: // Link(s) missing, or slots need fulfilling
 
-                        if (moving.Flow.OUT == 1 /*&& !moving.DumpQueued*/ && !moving.IsBroken())
+                        if (moving.Flow.OUT == 1 && !moving.IsBroken())
                         {
-                            Dlog("Adding to dump queue...");
                             Program.Dumper.Queue.Append(moving);
                         }
 
@@ -3388,7 +3292,6 @@ namespace IngameScript
             {
                 base.Run();
 
-                Dlog($"{Program.PullRequests[WorkIndex].MyName()} is Browsing...");
                 TypeFind.Job.Requester = Program.PullRequests[WorkIndex];
                 TypeFind.SetSearchCount();
 
@@ -3403,10 +3306,8 @@ namespace IngameScript
             {
                 Inventory browser = Program.PullRequests[WorkIndex];
                 if (browser.Pulled)
-                {
-                    Dlog("Needs re-scan!");
                     return true;
-                }
+                
 
                 switch (TypeFind.WorkLoad())
                 {
@@ -3898,7 +3799,6 @@ namespace IngameScript
             {
                 int oldIndex = ScrollIndex;
 
-                Dlog($"dir:{dir} | amount:{amount} | bodyCache:{MyPage.Body.Count} | bodySize:{BodySize}");
 
                 ScrollIndex += dir * amount;
                 ScrollIndex =
@@ -3907,12 +3807,10 @@ namespace IngameScript
                     MyPage.Body.Count <= BodySize ? 0 :
                     ScrollIndex > (MyPage.Body.Count - BodySize) ? (MyPage.Body.Count - BodySize) : ScrollIndex;
 
-                Dlog($"Scrolled! Before/After: {oldIndex}/{ScrollIndex}");
             }
 
             void WritePageToPanel()
             {
-                Dlog("Writing page...");
 
                 HeaderCount = 0;
                 BodyCount = 0;
@@ -3923,22 +3821,18 @@ namespace IngameScript
 
                 try
                 {
-                    Dlog($"Page exists: {MyPage != null}");
 
                     for (int h = 0; h < MyPage.Header.Count; h++)
                         AppendFormattedString(MyPage.Header[h]);
 
-                    Dlog("Header added!");
 
                     for (int f = 0; f < MyPage.Footer.Count; f++)
                         AppendFormattedString(MyPage.Footer[f]);
 
-                    Dlog("Footer buffered!");
 
                     BodySize = LineCount - (HeaderCount + FooterCount);
 
 
-                    Dlog($"Body size determined: {BodySize}");
 
                     for (int b = 0; b < BodySize && BodyCount < BodySize; b++)
                     {
@@ -3958,13 +3852,10 @@ namespace IngameScript
 
                     }
 
-                    //BodyCountCache = BodyCount;
-                    Dlog("Body added!");
 
                     PageBuilder.Append(FooterBuffer);
                     Panel.WriteText(PageBuilder);
 
-                    Dlog($"bodyList({MyPage.Body.Count}) | bodyCount({BodyCount}) | Scroll/Dir({ScrollIndex}/{ScrollDirection})");
                 }
                 catch
                 {
@@ -4422,12 +4313,7 @@ namespace IngameScript
             }
             public bool CheckEmpty(IMyInventory target)
             {
-                Dlog($"Check Empty : (Current){target.CurrentVolume} / (Max){target.MaxVolume}");
-
                 float filled = (float)target.CurrentVolume / (float)target.MaxVolume;
-
-                Dlog($"Fill percent: {filled * 100}%");
-
                 return filled < EMPTY_MAX;
             }
             public bool CheckClogged()
@@ -4490,7 +4376,6 @@ namespace IngameScript
             public Producer(BlockMeta meta) : base(meta)
             {
                 ProdBlock = (IMyProductionBlock)meta.Block;
-                //ProdBlock.UseConveyorSystem = Profile.ACTIVE_CONVEYOR;
             }
 
             public override bool IsManaged()
@@ -4584,11 +4469,9 @@ namespace IngameScript
 
         static bool ForceTransfer(Inventory target, MyFixedPoint? targetAllowed, Slot source)
         {
-            target.Dlog("Performing Force Transfer...");
-
             MyFixedPoint? allowed = AllowableReturn(targetAllowed, source);
-
-            target.Dlog($"Allowed: {(!allowed.HasValue ? "All" : $"{allowed.Value}")}");
+            if (allowed.HasValue && allowed.Value < 1)
+                return false;
 
             return target.PullInventory().TransferItemFrom(source.Container, source.ItemIndex, null, null, allowed);
         }
@@ -4596,6 +4479,9 @@ namespace IngameScript
         {
             try
             {
+                source.Dlog($"*Transferring*\n" +
+                    $"{source.InventoryName()} >>> {dest.InventoryName()}");
+
                 if (dest.IsFull())
                 {
                     dest.Dlog("Destination Too Full!");
@@ -4608,9 +4494,11 @@ namespace IngameScript
                     return false;
                 }
 
-                MyFixedPoint? amount = AllowableReturn(dest, source);
+                MyFixedPoint? allowed = AllowableReturn(dest, source);
+                if (allowed.HasValue && allowed.Value < 1)
+                    return false;
 
-                return dest.Container.TransferItemFrom(source.Container, source.ItemIndex, dest.ItemIndex, true, amount);
+                return dest.Container.TransferItemFrom(source.Container, source.ItemIndex, dest.ItemIndex, true, allowed);
             }
             catch { return false; }
         }
@@ -4632,13 +4520,10 @@ namespace IngameScript
         }
         static MyFixedPoint? AllowableReturn(MyFixedPoint? destTarget, Slot moving)
         {
-            moving.Dlog($"Destination Target: {(destTarget.HasValue ? destTarget.Value.ToString() : "all")}");
 
             MyFixedPoint? allow = moving.Flow.KEEP.HasValue ? moving.CurrentAmount() - moving.Flow.KEEP.Value : moving.IsLinkable() ? (MyFixedPoint?)(moving.CurrentAmount() - 1) : null/*moving.SnapShot.Amount*/;
-            moving.Dlog($"Allowed to move out: {allow}");
 
             MyFixedPoint? output = MaximumReturn(destTarget, allow);
-            moving.Dlog($"Maximum return: {(output.HasValue ? output.Value.ToString() : "all")}");
 
             return output.HasValue ? output.Value < 0 ? 0 : output : null;
         }
@@ -4658,12 +4543,10 @@ namespace IngameScript
         #region Comparisons
         static bool ProfileCompare(Inventory destination, Slot source, out MyFixedPoint? target, bool dirIn = true)
         {
-            destination.Dlog("Profile Compare");
             target = 0;
 
             if (!destination.PullInventory().IsConnectedTo(source.Container))
             {
-                source.Dlog("No Connection!");
                 return false;
             }
 
