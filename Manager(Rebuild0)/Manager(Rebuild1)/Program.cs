@@ -1618,9 +1618,6 @@ namespace IngameScript
                     SlotFilter();
                 }
 
-                //if (SortQueued)
-                //    return;
-
                 if (Profile != null)
                 {
                     Profile.Update(delta);
@@ -1628,7 +1625,6 @@ namespace IngameScript
                 else
                 {
                     Program.Sorter.Queue.Append(this);
-                    //SortQueued = true;
                 }
             }
             public void Pump()
@@ -4770,10 +4766,6 @@ namespace IngameScript
             if (target == null)
                 return true;
 
-            //source = source.ToUpper();
-            //target = target.ToUpper();
-            //return source.IndexOf(target) > -1;
-
             return source.IndexOf(target, StringComparison.OrdinalIgnoreCase) > -1;
         }
 
@@ -4831,15 +4823,7 @@ namespace IngameScript
                 return false;
             }
         }
-        /*static bool RawCompare(Compare compare, string raw, Root dbug)
-        {
-            try
-            {
-                string[] data = raw.Split(Split);
-                return FullCompare(compare.type, compare.sub, data[0], data[1], dbug);
-            }
-            catch { return false; }
-        }*/
+
         #endregion
 
         #region String builders
@@ -4864,10 +4848,7 @@ namespace IngameScript
 
             return $"%{percent.ToString($"n{sigCount}")}";
         }
-        /*static string DefaultBundler(float value, int sigCount)
-        {
-            return $"{value.ToString($"n{sigCount}")}";
-        }*/
+
         static string NotationBundler(float value, int sigCount)
         {
             int sci = 0;
