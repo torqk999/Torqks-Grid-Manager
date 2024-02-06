@@ -1,3 +1,0 @@
-F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\Shortcut\obj\x64\Debug\Shortcut.exe.config
-F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\Shortcut\obj\x64\Debug\Shortcut.csproj.CoreCompileInputs.cache
-F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\Shortcut\obj\x64\Debug\Shortcut.csproj.AssemblyReference.cache

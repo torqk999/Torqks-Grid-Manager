@@ -1,3 +1,0 @@
-F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\PistonAdjuster\obj\x64\Debug\PistonAdjuster.csproj.AssemblyReference.cache
-F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\PistonAdjuster\obj\x64\Debug\PistonAdjuster.exe.config
-F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\PistonAdjuster\obj\x64\Debug\PistonAdjuster.csproj.CoreCompileInputs.cache

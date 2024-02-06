@@ -347,7 +347,7 @@ namespace IngameScript
 
         /// USER CONSTANTS ///////////////////////
         const string Signature = "[TGM]";
-        const string CustomSig = "[CPY]";
+        const string CopySignature = "[CPY]";
         const string Terminate = "[TERMINATE]";
 
         const float PROD_BUFFER = 1000;
@@ -5052,9 +5052,8 @@ namespace IngameScript
                 if (newBlock != null)
                 {
                     if (TAKE_OVER)
-#pragma warning disable CS0162 // Unreachable code detected
                         ReTagBlock(DetectedBlocks[i]);
-#pragma warning restore CS0162 // Unreachable code detected
+
 
                     newBlock.Setup();
                     Blocks.Add(newBlock);
@@ -5273,9 +5272,9 @@ namespace IngameScript
             string masterCustomData = string.Empty;
 
             foreach (IMyTerminalBlock block in blocks)
-                if (block.CustomData.Contains(CustomSig))
+                if (block.CustomData.Contains(CopySignature))
                 {
-                    masterCustomData = block.CustomData.Replace(CustomSig, "");
+                    masterCustomData = block.CustomData.Replace(CopySignature, "");
                     break;
                 }
 

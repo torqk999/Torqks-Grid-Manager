@@ -1,3 +1,0 @@
-F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\Manager(NEW)\obj\x64\Debug\Manager(NEW).csproj.AssemblyReference.cache
-F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\Manager(NEW)\obj\x64\Debug\Manager(NEW).exe.config
-F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\Manager(NEW)\obj\x64\Debug\Manager(NEW).csproj.CoreCompileInputs.cache

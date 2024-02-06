@@ -1,2 +1,0 @@
-F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\Manager(Rebuild0)\obj\x64\Debug\Manager(Rebuild0).exe.config
-F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\Manager(Rebuild0)\obj\x64\Debug\Manager(Rebuild0).csproj.CoreCompileInputs.cache

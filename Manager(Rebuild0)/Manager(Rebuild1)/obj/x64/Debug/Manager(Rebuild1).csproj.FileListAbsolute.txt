@@ -16,9 +16,10 @@ F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\Manager(Rebuild1)\bin\SixLabo
 F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\Manager(Rebuild1)\bin\System.Numerics.Vectors.dll
 F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\Manager(Rebuild1)\bin\SixLabors.ImageSharp.xml
 F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\Manager(Rebuild1)\bin\SixLabors.Core.xml
+F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\Manager(Rebuild1)\obj\x64\Debug\Manager(Rebuild1).csproj.AssemblyReference.cache
+F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\Manager(Rebuild1)\obj\x64\Debug\Manager(Rebuild1).csproj.SuggestedBindingRedirects.cache
 F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\Manager(Rebuild1)\obj\x64\Debug\Manager(Rebuild1).exe.config
 F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\Manager(Rebuild1)\obj\x64\Debug\Manager(Rebuild1).csproj.CoreCompileInputs.cache
 F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\Manager(Rebuild1)\obj\x64\Debug\Manager(Rebuild1).csproj.CopyComplete
 F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\Manager(Rebuild1)\obj\x64\Debug\Manager(Rebuild1).exe
 F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\Manager(Rebuild1)\obj\x64\Debug\Manager(Rebuild1).pdb
-F:\GIT_REPOS\Torqks-Grid-Manager\Manager(Rebuild0)\Manager(Rebuild1)\obj\x64\Debug\Manager(Rebuild1).csproj.AssemblyReference.cache

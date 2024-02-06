@@ -338,6 +338,13 @@ namespace IngameScript
 {
     partial class Program : MyGridProgram
     {
+        #region TEST REGION
+        void foo0()
+        {
+            
+        }
+        #endregion
+
         #region MAIN REGION
 
         /// USER CONSTANTS ///////////////////////
@@ -1468,6 +1475,7 @@ namespace IngameScript
                     type.SubTypes.Scope(this);
 
                     AppendLineSource(StringFormat.SUB_HEADER, type);
+
                     foreach (TallyItemSub subType in type.SubTypes)
                     {
                         if (!ProfileCompare(MyDisplay.Profile, subType.Type, out blah))
